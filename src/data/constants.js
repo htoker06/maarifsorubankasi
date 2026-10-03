@@ -27,7 +27,7 @@ export const BLOOM_LEVELS = {
   uygulama: { label: 'Uygulama', order: 3, defaultDifficulty: 'orta' },
   analiz: { label: 'Analiz', order: 4, defaultDifficulty: 'orta' },
   degerlendirme: { label: 'Değerlendirme', order: 5, defaultDifficulty: 'zor' },
-  sentez: { label: 'Sentez', order: 6, defaultDifficulty: 'zor' },
+  sentez: { label: 'Sentez/Yaratma', order: 6, defaultDifficulty: 'zor' },
 };
 
 export const QUESTION_STATUSES = {

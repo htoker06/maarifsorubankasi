@@ -3,6 +3,8 @@ import { signOut } from '../../core/session.js';
 import { navigate } from '../../core/router.js';
 import { isDemo } from '../../lib/config.js';
 
+const ROLE_LABELS = { teacher: 'Öğretmen', student: 'Öğrenci', admin: 'Yönetici' };
+
 const NAV = {
   teacher: [
     { href: '#/ogretmen', label: 'Panom', icon: '🏠' },
@@ -12,6 +14,10 @@ const NAV = {
     { href: '#/ogretmen/siniflar', label: 'Sınıflarım', icon: '👥' },
     { href: '#/ogretmen/analiz', label: 'Kazanım Analizi', icon: '📊' },
     { href: '#/ogretmen/bildirimler', label: 'Hatalı Soru Bildirimleri', icon: '🚩' },
+  ],
+  admin: [
+    { href: '#/yonetici', label: 'Öğretmen Başvuruları', icon: '✅' },
+    { href: '#/yonetici/mufredat', label: 'Müfredat', icon: '📚' },
   ],
   student: [
     { href: '#/ogrenci', label: 'Panom', icon: '🏠' },
@@ -47,7 +53,7 @@ export function renderShell(root, user) {
           <nav class="flex flex-col gap-1">${navLinks}</nav>
           <div class="mt-8 rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800">
             <p class="font-semibold">${user.fullName}</p>
-            <p class="muted text-xs">${user.role === 'teacher' ? 'Öğretmen' : 'Öğrenci'} · ${user.schoolName ?? ''}</p>
+            <p class="muted text-xs">${ROLE_LABELS[user.role] ?? ''} · ${user.schoolName ?? ''}</p>
             <button class="btn-ghost btn-sm mt-2 w-full" data-logout>Çıkış yap</button>
           </div>
         </aside>

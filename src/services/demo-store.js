@@ -5,7 +5,7 @@ import { createSeed } from '../data/demo-seed.js';
 import { readJson, writeJson, removeKey } from '../lib/storage.js';
 import { normalizeTr, todayIso, uid } from '../lib/format.js';
 
-const KEY = 'sbm-demo-db-v1';
+const KEY = 'sbm-demo-db-v2'; // sürüm değişince eski demo verisi sıfırlanır
 
 let state = readJson(KEY);
 if (!state || state.version !== 1) {
@@ -39,6 +39,34 @@ export const profiles = {
   },
 };
 
+// ---------------- Yönetici: öğretmen başvuruları ----------------
+function requireAdmin() {
+  const me = requireUser();
+  if (state.profiles.find((p) => p.id === me)?.role !== 'admin') throw new Error('Bu işlem için yönetici yetkisi gerekir.');
+  return me;
+}
+
+export const admin = {
+  async teacherRequests({ status } = {}) {
+    requireAdmin();
+    return clone(state.teacherRequests.filter((r) => !status || r.status === status).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+  },
+  /** Onaylanırsa kullanıcının rolü 'teacher' olur. Supabase'de review_teacher_request() RPC'si. */
+  async reviewTeacherRequest(id, approve, reason = '') {
+    const me = requireAdmin();
+    const req = state.teacherRequests.find((r) => r.id === id);
+    if (!req || req.status !== 'pending') throw new Error('Başvuru bulunamadı ya da zaten sonuçlandı.');
+    req.status = approve ? 'approved' : 'rejected';
+    req.reviewedBy = me;
+    req.reviewedAt = now();
+    req.reason = reason;
+    const profile = state.profiles.find((p) => p.id === req.userId);
+    if (profile) profile.role = approve ? 'teacher' : 'pending_teacher';
+    persist();
+    return clone(req);
+  },
+};
+
 // ---------------- Müfredat ----------------
 export const curriculum = {
   async grades() {
@@ -55,6 +83,39 @@ export const curriculum = {
       ? [themeId]
       : state.themes.filter((t) => !subjectId || t.subjectId === subjectId).map((t) => t.id);
     return clone(state.outcomes.filter((o) => themeIds.includes(o.themeId)));
+  },
+  /** Müfredatın tamamı (dışa aktarma ve özet için). */
+  async snapshot() {
+    return clone({ subjects: state.subjects, themes: state.themes, outcomes: state.outcomes });
+  },
+  /**
+   * CSV'den gelen kayıtları ekler ya da günceller (upsert). Hiçbir kayıt silinmez;
+   * böylece sorulara bağlı tema ve kazanımlar korunur.
+   * Supabase'de bu işlem tek transaction içinde import_curriculum() RPC fonksiyonuyla yapılacak.
+   */
+  async importBatch({ subjects = [], themes = [], outcomes = [] }) {
+    requireAdmin();
+    const upsert = (list, items, keyOf) => {
+      const counts = { added: 0, updated: 0, unchanged: 0 };
+      for (const item of items) {
+        const existing = list.find((x) => keyOf(x) === keyOf(item));
+        if (!existing) {
+          list.push(clone(item));
+          counts.added += 1;
+        } else if (JSON.stringify({ ...existing, ...item }) !== JSON.stringify(existing)) {
+          Object.assign(existing, clone(item));
+          counts.updated += 1;
+        } else counts.unchanged += 1;
+      }
+      return counts;
+    };
+    const summary = {
+      subjects: upsert(state.subjects, subjects, (s) => s.id),
+      themes: upsert(state.themes, themes, (t) => t.id),
+      outcomes: upsert(state.outcomes, outcomes, (o) => o.code),
+    };
+    persist();
+    return summary;
   },
   /** Tüm müfredatı tek seferde (küçük veri) — etiket gösterimi için sözlükler. */
   async lookup() {

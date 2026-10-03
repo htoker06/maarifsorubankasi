@@ -110,9 +110,9 @@ Müfredat **referans veridir**: herkes okur, yalnızca yönetici yazar.
 
 Her soru şu Maarif Modeli boyutlarıyla etiketlenir: alan becerileri, kavramsal beceriler, sosyal-duygusal öğrenme becerileri, değerler, okuryazarlıklar.
 
-Bloom basamağı ve zorluk: `hatirlama · anlama · uygulama · analiz · degerlendirme · sentez` ve `kolay · orta · zor`.
+Bloom basamağı ve zorluk: `hatirlama · anlama · uygulama · analiz · degerlendirme · sentez` ve `kolay · orta · zor`. Son basamak ekranda **"Sentez/Yaratma"** olarak gösterilir.
 
-> Resmî kazanım kodları MEB öğretim programlarından aktarılacak. Ben örnek bir tohum verisi (`seed.sql`) ve CSV içe aktarma aracı hazırlayacağım.
+> Resmî kazanım kodları MEB öğretim programlarından **CSV içe aktarma aracıyla** (Yönetici paneli → Müfredat) aktarılır. Biçim ve kurallar: [`docs/MUFREDAT-CSV.md`](MUFREDAT-CSV.md). Supabase'de içe aktarma, tek transaction içinde çalışan `import_curriculum(jsonb)` RPC fonksiyonuyla yapılacak (yalnızca yönetici).
 
 ---
 
@@ -123,7 +123,7 @@ Aşağıdaki SQL bir taslaktır; onaydan sonra `supabase/migrations/` dosyaları
 ### 5.1 Sabit değer listeleri
 
 ```sql
-create type user_role       as enum ('teacher','student','admin');
+create type user_role       as enum ('teacher','student','admin','pending_teacher');
 create type school_level    as enum ('ilkokul','ortaokul','lise');
 create type question_type   as enum ('multiple_choice','open_ended','fill_blank','matching','true_false');
 create type difficulty      as enum ('kolay','orta','zor');
@@ -176,6 +176,26 @@ create table class_members (
   primary key (class_id, student_id)
 );
 ```
+
+```sql
+-- Öğretmen başvuruları: "Öğretmenim" seçeneğiyle kaydolan kullanıcı 'pending_teacher' rolünü alır,
+-- yönetici onaylayınca review_teacher_request() RPC'si rolü 'teacher' yapar.
+create table teacher_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles on delete cascade,
+  school_name text not null, branch text not null, note text,
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  reason text,                                   -- ret gerekçesi (kullanıcıya gösterilir)
+  reviewed_by uuid references profiles, reviewed_at timestamptz,
+  created_at timestamptz default now()
+);
+```
+
+**Kayıt ve rol akışı (onaylanan kararlar):**
+- **Öğrenci:** E-posta ve şifreyle kaydolur (`student`), öğretmenin verdiği **sınıf koduyla** sınıfa katılır.
+- **Öğretmen:** Kayıtta "Öğretmenim" seçer ve okul/branş bilgisini girer → `pending_teacher` rolü alır. Yalnızca "başvurunuz inceleniyor" ekranını görür.
+- **Yönetici:** Başvuruyu Yönetici panelinden onaylar → rol `teacher` olur. Reddederse gerekçe kullanıcıya gösterilir.
+- İlk yönetici hesabı, Supabase panelinden bir kez elle atanır (`update profiles set role='admin' where id=…`).
 
 > KVKK: Öğrenciler için yalnızca ad-soyad, sınıf ve okul bilgisi tutulur; T.C. kimlik numarası tutulmaz.
 
@@ -402,7 +422,7 @@ Her tabloda RLS **açık** olacak. Kurallar şöyle özetlenir:
 
 | Tablo | Öğretmen | Öğrenci |
 |---|---|---|
-| müfredat tabloları | okur | okur |
+| müfredat tabloları | okur (yazma yalnızca yönetici) | okur |
 | `profiles` | kendini + sınıfındaki öğrencileri okur; `role` alanını değiştiremez | kendini okur |
 | `questions` | kendi sorularını yazar; `public` olanları okur | **erişemez** |
 | `question_usages` | kendi kayıtlarını okur, **yazamaz** | erişemez |
@@ -410,6 +430,7 @@ Her tabloda RLS **açık** olacak. Kurallar şöyle özetlenir:
 | `assignments` | kendi atamaları | sınıfına atananları okur |
 | `attempts`, `attempt_answers` | sınıfındakileri okur | kendininkini okur; yazma yalnızca RPC ile |
 | `reports` | ekler; kendi sorusuna geleni yönetir | ekler |
+| `teacher_requests` | kendi başvurusunu okur (yönetici: tümünü okur ve sonuçlandırır) | — |
 
 Rol kontrolü için yardımcı fonksiyon: `create function auth_role() returns user_role ... select role from profiles where id = auth.uid()`.
 
@@ -460,6 +481,6 @@ Firebase planındaki işlevler aynen korunuyor:
 | Adım | Kapsam |
 |---|---|
 | **1** | Mimari ve şema (bu belge) + kurulum rehberi ✅ |
-| **2** | Vite + Tailwind iskeleti, rol bazlı paneller (Demo Modu), soru havuzu ve düzenleyici, sürükle-bırak yazılı oluşturucu, kullanılmış soru uyarısı, otomatik oluşturma, cevap anahtarı, PDF/Word çıktısı ✅ |
+| **2** | Vite + Tailwind iskeleti, rol bazlı paneller (Demo Modu), soru havuzu ve düzenleyici, sürükle-bırak yazılı oluşturucu, kullanılmış soru uyarısı, otomatik oluşturma, cevap anahtarı, PDF/Word çıktısı, Yönetici paneli (öğretmen onayı, müfredat CSV içe aktarma) ✅ |
 | **3** | Migration dosyaları, RLS kuralları, RPC fonksiyonları (`finalize_exam` vb.), Supabase giriş/kayıt (profil tablosuna bağlı olduğu için bu adıma alındı), Demo deposunun Supabase deposuyla değiştirilmesi, `/api/generate-questions` ile yapay zeka entegrasyonu |
 | **4** | Online test oynatıcı, puanlama, kazanım analizi grafikleri, hatalı soru bildirimi ve karantina |

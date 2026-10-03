@@ -38,6 +38,7 @@ export function renderLogin(root) {
                 <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-2xl dark:bg-emerald-950">🧑‍🎓</span>
                 <span><span class="block font-semibold">Öğrenci Paneli</span><span class="muted text-xs">Atanan testleri çöz, sonuçlarını ve karneni gör</span></span>
               </button>
+              <button class="btn-ghost btn-sm justify-start" data-action="admin">🛡️ Yönetici olarak gir (öğretmen onayı, müfredat)</button>
             </div>
 
             <div class="mt-6 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
@@ -53,6 +54,7 @@ export function renderLogin(root) {
   return onAction(root, {
     teacher: async () => navigate(homeFor(await signInDemo('teacher'))),
     student: async () => navigate(homeFor(await signInDemo('student'))),
+    admin: async () => navigate(homeFor(await signInDemo('admin'))),
     reset: () => {
       resetDemoData();
       toast('Demo verileri ilk haline döndürüldü.', 'success');

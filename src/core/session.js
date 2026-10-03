@@ -1,5 +1,5 @@
 import { api, setCurrentUser } from '../services/index.js';
-import { DEMO_STUDENT_ID, DEMO_TEACHER_ID } from '../data/demo-seed.js';
+import { DEMO_ADMIN_ID, DEMO_STUDENT_ID, DEMO_TEACHER_ID } from '../data/demo-seed.js';
 import { readJson, writeJson, removeKey } from '../lib/storage.js';
 
 const KEY = 'sbm-session-v1';
@@ -24,7 +24,7 @@ export async function restoreSession() {
 
 /** Demo Modu girişi. Adım 3'te Supabase Auth (e-posta/şifre) ile değiştirilecek. */
 export async function signInDemo(role) {
-  const id = role === 'teacher' ? DEMO_TEACHER_ID : DEMO_STUDENT_ID;
+  const id = { teacher: DEMO_TEACHER_ID, student: DEMO_STUDENT_ID, admin: DEMO_ADMIN_ID }[role];
   current = await api.profiles.get(id);
   setCurrentUser(id);
   writeJson(KEY, { userId: id });
@@ -39,4 +39,4 @@ export function signOut() {
   emit();
 }
 
-export const homeFor = (user) => (user?.role === 'student' ? '#/ogrenci' : '#/ogretmen');
+export const homeFor = (user) => ({ student: '#/ogrenci', admin: '#/yonetici' })[user?.role] ?? '#/ogretmen';

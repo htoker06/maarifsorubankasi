@@ -8,6 +8,7 @@ import { html, setHtml } from './lib/html.js';
 const app = document.getElementById('app');
 
 const teacherOnly = () => (!getUser() ? '#/giris' : getUser().role !== 'teacher' ? homeFor(getUser()) : null);
+const adminOnly = () => (!getUser() ? '#/giris' : getUser().role !== 'admin' ? homeFor(getUser()) : null);
 const studentOnly = () => (!getUser() ? '#/giris' : getUser().role !== 'student' ? homeFor(getUser()) : null);
 
 // Sayfa modülleri ihtiyaç anında yüklenir (ilk açılış hızlı olur).
@@ -22,6 +23,9 @@ route('/ogretmen/sinav/:id', { guard: teacherOnly, page: () => import('./feature
 route('/ogretmen/siniflar', { guard: teacherOnly, page: () => import('./features/teacher/classes.js') });
 route('/ogretmen/analiz', { guard: teacherOnly, page: () => import('./features/common/coming-soon.js'), meta: { title: 'Kazanım Analizi', step: 4, text: 'Sınıf ısı haritası (öğrenci × kazanım), tema radar grafiği ve madde analizi (soru başına doğru yüzdesi) Chart.js ile burada yer alacak.' } });
 route('/ogretmen/bildirimler', { guard: teacherOnly, page: () => import('./features/common/coming-soon.js'), meta: { title: 'Hatalı Soru Bildirimleri', step: 4, text: 'Öğrenci ve öğretmenlerden gelen hatalı soru bildirimleri, karantinaya alınan sorular ve revizyon akışı burada yönetilecek.' } });
+
+route('/yonetici', { guard: adminOnly, page: () => import('./features/admin/teacher-requests.js') });
+route('/yonetici/mufredat', { guard: adminOnly, page: () => import('./features/curriculum/curriculum-page.js') });
 
 route('/ogrenci', { guard: studentOnly, page: () => import('./features/student/dashboard.js') });
 route('/ogrenci/testler', { guard: studentOnly, page: () => import('./features/common/coming-soon.js'), meta: { title: 'Testlerim', step: 4, text: 'Öğretmeninizin atadığı online testler; süre tutucu, soru paleti, boş bırakma ve anında sonuç ekranıyla burada çözülecek.' } });
