@@ -143,8 +143,13 @@ create table grades   (id smallint primary key check (id between 1 and 12), leve
 create table subjects (id text primary key, grade_id smallint references grades, name text not null, program_year int);
 create table themes   (id text primary key, subject_id text references subjects on delete cascade,
                        sort_order int, name text not null);
-create table outcomes (code text primary key, theme_id text references themes on delete cascade,
-                       text text not null, process_components jsonb default '[]');
+-- Resmî programlarda aynı kod birden fazla temada geçebilir (ör. Türkçe'de beceriler temalar boyunca
+-- tekrarlanır), bu yüzden benzersiz olan (tema, kod) ikilisidir.
+create table outcomes (id bigserial primary key, theme_id text not null references themes on delete cascade,
+                       code text not null, text text not null, process_components jsonb default '[]',
+                       sort_order int, unique (theme_id, code));
+-- Ünitenin Maarif Modeli bileşenleri (alan becerileri, değerler, okuryazarlıklar…): AI istemine bağlam olarak verilir
+alter table themes add column meta jsonb default '{}';
 ```
 
 ### 5.3 Kullanıcılar ve sınıflar
@@ -225,7 +230,7 @@ create table questions (
   created_at timestamptz default now(), updated_at timestamptz default now()
 );
 create table question_outcomes (question_id uuid references questions on delete cascade,
-                                outcome_code text references outcomes, primary key (question_id, outcome_code));
+                                outcome_id bigint references outcomes, primary key (question_id, outcome_id));
 create table question_revisions (id bigserial primary key, question_id uuid references questions on delete cascade,
                                  version int, data jsonb, edited_by uuid references profiles, edited_at timestamptz default now());
 
@@ -365,13 +370,13 @@ Ayrı bir istatistik tablosu gerekmez; PostgreSQL bunu cevaplardan hesaplar:
 
 ```sql
 create view student_outcome_stats as
-select a.student_id, qo.outcome_code, o.theme_id,
+select a.student_id, o.code as outcome_code, o.theme_id,
        count(*) filter (where aa.is_correct) as correct,
        count(*) as total
 from attempt_answers aa
 join attempts a           on a.id = aa.attempt_id and a.status = 'submitted'
 join question_outcomes qo on qo.question_id = aa.question_id
-join outcomes o           on o.code = qo.outcome_code
+join outcomes o           on o.id = qo.outcome_id
 group by 1,2,3;
 ```
 

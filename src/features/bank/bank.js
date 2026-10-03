@@ -6,7 +6,7 @@ import { toast } from '../../ui/toast.js';
 import { openQuestionEditor } from './question-editor.js';
 import { readJson, writeJson } from '../../lib/storage.js';
 import { formatDate } from '../../lib/format.js';
-import { BLOOM_LEVELS, DIFFICULTIES, QUESTION_STATUSES, QUESTION_TYPES } from '../../data/constants.js';
+import { BLOOM_LEVELS, DIFFICULTIES, QUESTION_STATUSES, QUESTION_TYPES, outcomeKey } from '../../data/constants.js';
 
 const FILTER_KEY = 'sbm-bank-filters';
 const entries = (obj) => Object.entries(obj).map(([k, v]) => [k, v.label]);
@@ -133,7 +133,7 @@ export async function render(root) {
             ${q.body.options.filter((o) => o.rationale).map((o) => html`<li><strong>${o.key})</strong> ${o.rationale}</li>`)}</ul></div>` : ''}
           ${q.type === 'open_ended' && q.body?.rubric?.length ? html`<div class="mt-4"><p class="label">Dereceli puanlama</p><ul class="space-y-1 text-sm">
             ${q.body.rubric.map((r) => html`<li>${r.criterion} — <strong>${r.points} puan</strong></li>`)}</ul></div>` : ''}
-          <div class="mt-4 text-xs text-slate-500">Kazanım: ${q.outcomeCodes.map((c) => `${c} — ${lookup.outcomes[c]?.text ?? ''}`).join('; ') || '—'}</div>
+          <div class="mt-4 text-xs text-slate-500">Kazanım: ${q.outcomeCodes.map((c) => `${c} — ${lookup.outcomes[outcomeKey(q.themeId, c)]?.text ?? ''}`).join('; ') || '—'}</div>
           ${usage.length ? html`<div class="mt-4"><p class="label">Kullanım geçmişi</p><ul class="space-y-1 text-sm">
             ${usage.map((u) => html`<li>📅 ${formatDate(u.examDate)} — ${u.examTitle}</li>`)}</ul></div>` : ''}`,
         actions: [{ label: 'Kapat', value: null }],

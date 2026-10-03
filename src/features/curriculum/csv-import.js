@@ -160,15 +160,17 @@ export function parseCurriculumCsv(text) {
       return;
     }
 
-    if (outcomes.has(code)) {
-      errors.push({ line, message: `"${code}" kodu dosyada birden fazla kez geçiyor (ilk: ${outcomes.get(code).line}. satır)` });
+    // Aynı kod farklı temalarda geçebilir (resmî programlarda olağan); aynı temada iki kez geçemez.
+    const key = `${themeId}|${code}`;
+    if (outcomes.has(key)) {
+      errors.push({ line, message: `"${code}" kodu aynı temada birden fazla kez geçiyor (ilk: ${outcomes.get(key).line}. satır)` });
       return;
     }
     const components = get('surec_bilesenleri')
       .split('|')
       .map((s) => s.trim())
       .filter(Boolean);
-    outcomes.set(code, { code, themeId, text: outcomeText, processComponents: components, line });
+    outcomes.set(key, { code, themeId, text: outcomeText, processComponents: components, line });
     if (/^ÖRN\./i.test(code)) warnings.push({ line, message: `"${code}" örnek koddur; resmî kodla değiştirin.` });
   });
 
@@ -188,7 +190,8 @@ export function curriculumToCsv({ subjects, themes, outcomes }) {
     .sort((a, b) => {
       const sa = subjectById[a.t.subjectId];
       const sb = subjectById[b.t.subjectId];
-      return sa.gradeId - sb.gradeId || sa.name.localeCompare(sb.name, 'tr') || a.t.order - b.t.order || a.o.code.localeCompare(b.o.code, 'tr', { numeric: true });
+      // Tema içindeki sıra, programdaki (kayıt) sırası olarak korunur
+      return sa.gradeId - sb.gradeId || sa.name.localeCompare(sb.name, 'tr') || a.t.order - b.t.order;
     })
     .map(({ o, t }) => {
       const s = subjectById[t.subjectId];

@@ -12,6 +12,17 @@ const MAX_LISTED_ISSUES = 50;
 export async function render(root) {
   let parsed = null;
   let fileLabel = '';
+  let selectedSubjects = new Set();
+
+  /** Seçili derslere ait kayıtlar */
+  const selection = () => {
+    const themeIds = new Set(parsed.themes.filter((t) => selectedSubjects.has(t.subjectId)).map((t) => t.id));
+    return {
+      subjects: parsed.subjects.filter((s) => selectedSubjects.has(s.id)),
+      themes: parsed.themes.filter((t) => themeIds.has(t.id)),
+      outcomes: parsed.outcomes.filter((o) => themeIds.has(o.themeId)),
+    };
+  };
 
   async function paint() {
     const snap = await api.curriculum.snapshot();
@@ -96,9 +107,10 @@ export async function render(root) {
   }
 
   async function readFile(file) {
-    if (file.size > 5 * 1024 * 1024) return toast('Dosya 5 MB\'tan büyük olamaz.', 'error');
+    if (file.size > 20 * 1024 * 1024) return toast('Dosya 20 MB\'tan büyük olamaz.', 'error');
     fileLabel = file.name;
     parsed = parseCurriculumCsv(await file.text());
+    selectedSubjects = new Set(parsed.subjects.map((s) => s.id));
     paintResult();
   }
 
@@ -113,6 +125,10 @@ export async function render(root) {
   function paintResult() {
     const p = parsed;
     const ok = p.errors.length === 0 && p.outcomes.length > 0;
+    const sel = ok ? selection() : null;
+    const outcomeCountBySubject = {};
+    const themeSubject = Object.fromEntries(p.themes.map((t) => [t.id, t.subjectId]));
+    p.outcomes.forEach((o) => (outcomeCountBySubject[themeSubject[o.themeId]] = (outcomeCountBySubject[themeSubject[o.themeId]] ?? 0) + 1));
     setHtml(
       $('#result', root),
       html`
@@ -126,7 +142,16 @@ export async function render(root) {
         ${p.warnings.length ? html`<p class="mt-4 text-sm font-semibold text-amber-700 dark:text-amber-300">⚠️ ${p.warnings.length} uyarı</p>${issueList(p.warnings, 'warning')}` : ''}
         ${ok
           ? html`<div class="mt-4">
-              <p class="label">Önizleme (ilk 8 kazanım)</p>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="label">Aktarılacak dersler (${sel.subjects.length}/${p.subjects.length})</p>
+                <span class="flex gap-2 text-xs"><button class="underline" data-action="select-all">Tümünü seç</button><button class="underline" data-action="select-none">Hiçbirini seçme</button></span>
+              </div>
+              <div class="mt-1 grid max-h-56 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2 text-sm sm:grid-cols-2 dark:border-slate-700">
+                ${[...p.subjects].sort((a, b) => a.gradeId - b.gradeId || a.name.localeCompare(b.name, 'tr')).map((s) => html`<label class="flex items-center gap-2">
+                  <input type="checkbox" data-subject="${s.id}" ${selectedSubjects.has(s.id) ? 'checked' : ''} />
+                  <span class="truncate">${s.gradeId}. sınıf ${s.name}</span><span class="muted ml-auto shrink-0 text-xs">${outcomeCountBySubject[s.id] ?? 0}</span></label>`)}
+              </div>
+              <p class="label mt-4">Önizleme (ilk 8 kazanım)</p>
               <div class="overflow-x-auto"><table class="w-full text-left text-xs">
                 <thead><tr class="border-b border-slate-200 dark:border-slate-700"><th class="py-1 pr-2">Kod</th><th class="py-1 pr-2">Tema</th><th class="py-1">Kazanım</th></tr></thead>
                 <tbody>${p.outcomes.slice(0, 8).map((o) => html`<tr class="border-b border-slate-100 align-top dark:border-slate-800">
@@ -134,7 +159,7 @@ export async function render(root) {
                   <td class="py-1 pr-2">${p.themes.find((t) => t.id === o.themeId)?.name}</td>
                   <td class="py-1">${o.text}${o.processComponents.length ? html`<span class="muted block">${o.processComponents.length} süreç bileşeni</span>` : ''}</td></tr>`)}</tbody>
               </table></div>
-              <button class="btn-primary mt-4" data-action="import">İçe aktar (${p.outcomes.length} kazanım)</button>
+              <button class="btn-primary mt-4" data-action="import" ${sel.outcomes.length ? '' : 'disabled'}>İçe aktar (${sel.subjects.length} ders, ${sel.outcomes.length} kazanım)</button>
             </div>`
           : ''}`,
     );
@@ -143,20 +168,42 @@ export async function render(root) {
   const off = onAction(root, {
     template: () => downloadBlob(new Blob([buildTemplateCsv()], { type: 'text/csv;charset=utf-8' }), 'mufredat_sablonu.csv'),
     export: async () => downloadBlob(new Blob([curriculumToCsv(await api.curriculum.snapshot())], { type: 'text/csv;charset=utf-8' }), 'mufredat.csv'),
+    'select-all': () => ((selectedSubjects = new Set(parsed.subjects.map((s) => s.id))), paintResult()),
+    'select-none': () => ((selectedSubjects = new Set()), paintResult()),
     import: async () => {
+      const sel = selection();
       const ok = await confirmDialog({
         title: 'Müfredatı içe aktar',
-        message: `${parsed.subjects.length} ders, ${parsed.themes.length} tema ve ${parsed.outcomes.length} kazanım eklenecek ya da güncellenecek. Mevcut kayıtlar silinmez.`,
+        message: `${sel.subjects.length} ders, ${sel.themes.length} tema ve ${sel.outcomes.length} kazanım eklenecek ya da güncellenecek. Mevcut kayıtlar silinmez.`,
         confirmLabel: 'İçe aktar',
       });
       if (!ok) return;
-      const s = await api.curriculum.importBatch(parsed);
+      let s;
+      try {
+        s = await api.curriculum.importBatch(sel);
+      } catch (err) {
+        toast(err.message, 'error', 8000);
+        return;
+      }
       toast(`İçe aktarıldı: ${s.outcomes.added} yeni, ${s.outcomes.updated} güncellenen kazanım (${s.subjects.added} yeni ders, ${s.themes.added} yeni tema).`, 'success', 6000);
       parsed = null;
       paint();
     },
   });
 
+  // Ders seçimi kutuları (tek dinleyici; paint() her çağrıldığında yeniden bağlanmaz)
+  const onSubjectToggle = (e) => {
+    const cb = e.target.closest('[data-subject]');
+    if (!cb) return;
+    if (cb.checked) selectedSubjects.add(cb.dataset.subject);
+    else selectedSubjects.delete(cb.dataset.subject);
+    paintResult();
+  };
+  root.addEventListener('change', onSubjectToggle);
+
   await paint();
-  return off;
+  return () => {
+    off();
+    root.removeEventListener('change', onSubjectToggle);
+  };
 }

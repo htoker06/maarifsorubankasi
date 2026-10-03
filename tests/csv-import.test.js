@@ -47,11 +47,17 @@ describe('parseCurriculumCsv', () => {
     expect(r.outcomes).toHaveLength(0);
   });
 
-  it('tekrarlanan kodu ve tutarsız tema adını yakalar', () => {
+  it('aynı temada tekrarlanan kodu ve tutarsız tema adını yakalar', () => {
     const r = parseCurriculumCsv([HEADER, '6;Matematik;;1;Sayılar;M.1;A;', '6;Matematik;;1;Sayılar;M.1;B;', '6;Matematik;;1;Kesirler;M.2;C;'].join('\n'));
     expect(r.errors).toHaveLength(2);
-    expect(r.errors[0].message).toContain('birden fazla');
+    expect(r.errors[0].message).toContain('aynı temada');
     expect(r.errors[1].message).toContain('farklı adlar');
+  });
+
+  it('aynı kodun farklı temalarda geçmesine izin verir (ör. Türkçe)', () => {
+    const r = parseCurriculumCsv([HEADER, '6;Türkçe;;1;Birinci Tema;T.D.6.1;Dinler;', '6;Türkçe;;2;İkinci Tema;T.D.6.1;Dinler;'].join('\n'));
+    expect(r.errors).toEqual([]);
+    expect(r.outcomes.map((o) => o.themeId)).toEqual(['g6-turkce-t1', 'g6-turkce-t2']);
   });
 
   it('örnek (ÖRN.) kodlar için uyarı verir', () => {

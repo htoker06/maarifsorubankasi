@@ -14,7 +14,8 @@ Türkiye Yüzyılı Maarif Modeli'ne uygun, yapay zeka destekli soru bankası, y
 | 4 | Online test, kazanım analizi, hatalı soru bildirimi | ⏳ |
 
 Uygulama şu an **Demo Modu**'nda çalışır: örnek veriler tarayıcıda saklanır, hesap gerekmez.
-Örnek müfredattaki kazanım kodları (`ÖRN.` ile başlar) resmî kodlar değildir.
+
+**Resmî müfredat:** `data/curriculum/meb_tymm_tum_siniflar.csv` — MEB Türkiye Yüzyılı Maarif Modeli programlarından çekilmiş 1–12. sınıf verisi (153 ders, 808 tema, 7.369 öğrenme çıktısı). Yönetici paneli → Müfredat ekranından yüklenir. Ayrıntılar: [docs/MUFREDAT-CSV.md](docs/MUFREDAT-CSV.md)
 
 ## Çalıştırma
 
@@ -36,6 +37,8 @@ src/
   data/        sabitler ve demo verisi
   features/    ekranlar (bank, exam-builder, export, generator, ...)
   ui/          modal, bildirim ve ortak bileşenler
+scripts/       MEB müfredatını çeken ve demo verisini üreten betikler
+data/          resmî müfredat CSV/JSON dosyaları
 tests/         Vitest birim testleri
 docs/          mimari ve kurulum belgeleri
 ```

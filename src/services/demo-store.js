@@ -4,8 +4,9 @@
 import { createSeed } from '../data/demo-seed.js';
 import { readJson, writeJson, removeKey } from '../lib/storage.js';
 import { normalizeTr, todayIso, uid } from '../lib/format.js';
+import { outcomeKey } from '../data/constants.js';
 
-const KEY = 'sbm-demo-db-v2'; // sürüm değişince eski demo verisi sıfırlanır
+const KEY = 'sbm-demo-db-v3'; // sürüm değişince eski demo verisi sıfırlanır
 
 let state = readJson(KEY);
 if (!state || state.version !== 1) {
@@ -95,6 +96,7 @@ export const curriculum = {
    */
   async importBatch({ subjects = [], themes = [], outcomes = [] }) {
     requireAdmin();
+    const backup = clone({ subjects: state.subjects, themes: state.themes, outcomes: state.outcomes });
     const upsert = (list, items, keyOf) => {
       const counts = { added: 0, updated: 0, unchanged: 0 };
       for (const item of items) {
@@ -112,9 +114,12 @@ export const curriculum = {
     const summary = {
       subjects: upsert(state.subjects, subjects, (s) => s.id),
       themes: upsert(state.themes, themes, (t) => t.id),
-      outcomes: upsert(state.outcomes, outcomes, (o) => o.code),
+      outcomes: upsert(state.outcomes, outcomes, (o) => outcomeKey(o.themeId, o.code)),
     };
-    persist();
+    if (!persist()) {
+      Object.assign(state, backup);
+      throw new Error('Demo Modu tarayıcı depolama sınırı aşıldı. Daha az ders seçerek tekrar deneyin (Supabase bağlandığında bu sınır olmayacak).');
+    }
     return summary;
   },
   /** Tüm müfredatı tek seferde (küçük veri) — etiket gösterimi için sözlükler. */
@@ -122,7 +127,7 @@ export const curriculum = {
     return {
       subjects: Object.fromEntries(state.subjects.map((s) => [s.id, s])),
       themes: Object.fromEntries(state.themes.map((t) => [t.id, t])),
-      outcomes: Object.fromEntries(state.outcomes.map((o) => [o.code, o])),
+      outcomes: Object.fromEntries(state.outcomes.map((o) => [outcomeKey(o.themeId, o.code), o])),
     };
   },
 };
