@@ -1,397 +1,465 @@
-# SoruBankasıMatik — Adım 1: Sistem Mimarisi ve Veritabanı Tasarımı
+# SoruBankasıMatik: Adım 1, Sistem Mimarisi ve Veritabanı Tasarımı
 
-> Durum: **Taslak, onay bekliyor.** Bu belge onaylandıktan sonra Adım 2 (UI/UX + HTML/CSS/JS altyapısı) başlayacaktır.
+> Durum: **Taslak (sürüm 2: GitHub + Supabase + Vercel), onay bekliyor.**
+> Kurulum adımları için: [`docs/KURULUM.md`](KURULUM.md)
 
 ---
 
-## 1. Teknoloji Yığını
+## 1. Altyapı: üç servis, üç görev
+
+| Servis | Görevi | Bu projede ne yapacak |
+|---|---|---|
+| **GitHub** | Kodun saklandığı yer | Tüm kaynak kodu, veritabanı tanımları (SQL dosyaları) ve belgeler burada durur. Her değişiklik bir commit olarak kayıt altındadır. |
+| **Supabase** | Veritabanı ve kullanıcı yönetimi | PostgreSQL veritabanı, giriş/kayıt (Auth), satır bazlı güvenlik (RLS), soru görselleri için dosya deposu (Storage). |
+| **Vercel** | Web sitesine dönüştürme ve yayınlama | GitHub'a her gönderimde siteyi otomatik derler ve yayınlar. Gizli anahtar gerektiren işler (yapay zeka çağrısı) Vercel'in sunucu fonksiyonlarında çalışır. |
+
+```
+           git push                    otomatik derleme + yayın
+Geliştirici ─────────► GitHub ─────────────────────────────► Vercel
+                         │                                     │
+                         │ supabase/migrations/*.sql           │  https://sorubankasimatik.vercel.app
+                         ▼                                     ▼
+                    Supabase  ◄──────── tarayıcı (anon anahtar + RLS) ────────┐
+                    (Postgres, Auth,                                        │
+                     Storage)  ◄──── /api/* fonksiyonları (gizli anahtar) ──┤
+                                          │                                 │
+                                          ▼                                 │
+                                     Claude API                       Öğretmen / Öğrenci
+```
+
+## 2. Teknoloji yığını
 
 | Katman | Teknoloji | Neden |
 |---|---|---|
-| Derleme / geliştirme | **Vite** (Vanilla JS, ES Modules) | Framework bağımlılığı yok, hızlı, modüler; çıktı saf HTML/CSS/JS |
-| Arayüz | **Tailwind CSS** + küçük bileşen kütüphanesi (kendi `ui/` modüllerimiz) | Mobil öncelikli, tutarlı tasarım, karanlık mod |
-| Sürükle-bırak | **SortableJS** | Yazılı kağıdında soru sırası, bölümler arası taşıma; dokunmatik destekli |
-| Grafik | **Chart.js** | Kazanım analizi (radar, bar, zaman serisi) |
-| Matematik / formül | **KaTeX** | Fen ve matematik sorularında LaTeX gösterimi |
-| PDF çıktı | **pdfmake** (Türkçe karakterli gömülü font ile) | Sayfa düzeni kontrollü, A4, iki sütun, barem sayfası |
-| Word çıktı | **docx** (npm) | Gerçek `.docx` üretimi (HTML→doc hilesi değil) |
-| Kimlik doğrulama | **Firebase Authentication** (E-posta/Şifre + Google) | Rol bilgisi *Custom Claims* ile |
-| Veritabanı | **Cloud Firestore** | Gerçek zamanlı, ölçeklenebilir, güvenlik kuralları |
-| Sunucu mantığı | **Cloud Functions for Firebase (2. nesil, TypeScript)** | AI anahtarının gizli tutulması, puanlama, kullanım kaydı |
-| Dosya | **Cloud Storage** | Soru görselleri, grafik/şekil ekleri |
-| Barındırma | **Firebase Hosting** | SPA + CDN |
-| Güvenlik | **App Check** (reCAPTCHA Enterprise) + Firestore Rules | AI fonksiyonlarının kötüye kullanımını önleme |
-| AI | **Claude API** (`@anthropic-ai/sdk`, varsayılan model `claude-opus-5-5`) — *sağlayıcı bağımsız adaptör* ile | JSON Şema ile **yapılandırılmış çıktı** → her zaman doğrulanabilir soru nesnesi |
-| Test | Vitest (birim) + Firebase Emulator Suite (kurallar ve fonksiyonlar) + Playwright (E2E) | |
+| Ön yüz | **Vite** + sade JavaScript (ES Modules) | Framework bağımlılığı yok. Vercel, Vite projelerini ayar gerektirmeden tanır. |
+| Tasarım | **Tailwind CSS** | Mobil öncelikli, tutarlı, karanlık mod desteği |
+| Sürükle-bırak | **SortableJS** | Yazılı kağıdında soru sıralama; dokunmatik ekran desteği |
+| Grafik | **Chart.js** | Kazanım analizi (radar, çubuk, ısı haritası) |
+| Formül | **KaTeX** | Matematik ve fen sorularında formül gösterimi |
+| PDF / Word | **pdfmake** (Türkçe font gömülü) / **docx** | Tarayıcıda üretilir, sunucu maliyeti yok |
+| Veritabanı istemcisi | **@supabase/supabase-js** | Tarayıcıdan güvenli sorgu (RLS ile) |
+| Sunucu fonksiyonları | **Vercel Functions** (`/api` klasörü, Node.js) | Yapay zeka anahtarı burada gizli kalır |
+| Veritabanı mantığı | **PostgreSQL fonksiyonları (RPC)** + tetikleyiciler | Sınavı kesinleştirme, puanlama, karantina gibi işler veritabanının içinde, tek işlem (transaction) olarak çalışır |
+| Yapay zeka | **Claude API** (`@anthropic-ai/sdk`, varsayılan `claude-opus-5-5`) | JSON şemalı yapılandırılmış çıktı; adaptör katmanı ile sağlayıcı değiştirilebilir |
+| Test | Vitest + Supabase CLI (yerel veritabanı) + Playwright | |
 
-> **Kritik güvenlik kararı:** AI API anahtarı **asla** tarayıcıya gönderilmez. Tüm AI çağrıları Cloud Functions üzerinden yapılır; anahtar *Secret Manager*'da tutulur.
+### Gizli bilgiler nerede durur?
+
+| Anahtar | Nerede | Tarayıcı görür mü? |
+|---|---|---|
+| `VITE_SUPABASE_URL` | Vercel ortam değişkeni | Evet (zararsız) |
+| `VITE_SUPABASE_ANON_KEY` (yeni panelde "publishable key") | Vercel ortam değişkeni | Evet. **RLS kuralları korur**; bu anahtarla yalnızca izin verilen satırlar okunur. |
+| `SUPABASE_SERVICE_ROLE_KEY` ("secret key") | Yalnızca Vercel ortam değişkeni | **Hayır, asla.** Tüm güvenliği atlar. |
+| `ANTHROPIC_API_KEY` | Yalnızca Vercel ortam değişkeni | **Hayır, asla.** |
+
+> `VITE_` ile başlayan değişkenler derleme sırasında koda gömülür ve herkes görebilir. Gizli anahtarların adı **asla** `VITE_` ile başlamamalıdır.
 
 ---
 
-## 2. Genel Mimari
-
-```
-┌──────────────────────────── Tarayıcı (SPA, Vite) ────────────────────────────┐
-│  Öğretmen Paneli                         Öğrenci Paneli                       │
-│  ├─ Soru Üret (AI)                       ├─ Atanan Testlerim                  │
-│  ├─ Soru Havuzu (filtre/düzenle)         ├─ Online Test Oynatıcı (süre, gezinme)│
-│  ├─ Yazılı Oluşturucu (sürükle-bırak)    ├─ Sonuç & Doğru/Yanlış ekranı        │
-│  ├─ Tarama Testleri / Atamalar           ├─ Kazanım Karnem (Chart.js)          │
-│  ├─ Sınıflarım & Analiz                  └─ Hatalı Soru Bildir                 │
-│  └─ Karantina / Revizyon                                                       │
-│         │  Firebase JS SDK (Auth, Firestore, Storage, Functions callable)      │
-└─────────┼──────────────────────────────────────────────────────────────────────┘
-          ▼
-┌──────────────────────────── Firebase ─────────────────────────────────────────┐
-│ Auth (custom claims: role=teacher|student|admin)                              │
-│ Firestore  ◄──── Security Rules (rol + sahiplik kontrolü)                      │
-│ Cloud Functions (callable / trigger):                                          │
-│   generateQuestions   → Claude API → şema doğrulama → questions (status=draft) │
-│   finalizeExam        → sınavı kilitler + questionUsages kayıtlarını yazar     │
-│   startAttempt        → öğrenciye CEVAPSIZ soru kopyası verir, süre başlatır   │
-│   submitAttempt       → sunucuda puanlar, kazanım istatistiklerini günceller   │
-│   onReportCreated     → eşik aşılırsa soruyu karantinaya alır                  │
-│   setUserRole         → admin / sınıf kodu ile rol atama                       │
-│ Storage (soru görselleri)                                                     │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Klasör yapısı (planlanan)
+## 3. Klasör yapısı (planlanan)
 
 ```
 /
 ├─ index.html
-├─ src/
-│  ├─ main.js                 # uygulama girişi, router başlatma
-│  ├─ router.js               # hash tabanlı, rol korumalı rotalar
-│  ├─ firebase.js             # SDK başlatma, emulator bağlantısı
-│  ├─ state/store.js          # küçük reaktif store (oturum, filtreler)
-│  ├─ services/               # Firestore erişim katmanı (tek yer)
+├─ package.json
+├─ vite.config.js
+├─ vercel.json                 # /api fonksiyon ayarları, SPA yönlendirmesi
+├─ .env.example                # değişken adları (değerler YOK)
+├─ src/                        # Ön yüz
+│  ├─ main.js  router.js
+│  ├─ lib/supabase.js          # Supabase istemcisi
+│  ├─ services/                # Tüm veritabanı erişimi burada
 │  │   ├─ questions.js  exams.js  usages.js  curriculum.js
-│  │   ├─ assignments.js  attempts.js  reports.js  analytics.js
+│  │   └─ assignments.js  attempts.js  reports.js  analytics.js
 │  ├─ features/
 │  │   ├─ auth/  teacher/  student/
-│  │   ├─ generator/          # AI soru üretim sihirbazı
-│  │   ├─ bank/               # havuz, filtre, editör
-│  │   ├─ exam-builder/       # yazılı oluşturucu + uyarı sistemi
-│  │   ├─ test-player/        # online test arayüzü
-│  │   ├─ analytics/          # Chart.js raporları
-│  │   └─ export/             # pdf.js, docx.js
-│  ├─ ui/                     # buton, modal, toast, tablo, rozet bileşenleri
-│  └─ styles/tailwind.css
-├─ functions/                 # Cloud Functions (TypeScript)
-│  └─ src/ ai/ exams/ attempts/ reports/ schemas/
-├─ data/curriculum/           # müfredat tohum (seed) JSON dosyaları
-├─ firestore.rules  firestore.indexes.json  storage.rules  firebase.json
-└─ docs/MIMARI.md
+│  │   ├─ generator/  bank/  exam-builder/
+│  │   ├─ test-player/  analytics/  export/
+│  ├─ ui/                      # buton, modal, toast, rozet
+│  └─ styles/
+├─ api/                        # Vercel sunucu fonksiyonları
+│  ├─ generate-questions.js    # Claude API çağrısı
+│  ├─ similar-question.js
+│  └─ _lib/ (auth doğrulama, ai adaptörü, JSON şemaları)
+├─ supabase/
+│  ├─ config.toml
+│  ├─ migrations/              # Veritabanı şeması, sürümlü SQL dosyaları
+│  │   ├─ 0001_curriculum.sql
+│  │   ├─ 0002_users_classes.sql
+│  │   ├─ 0003_questions.sql
+│  │   ├─ 0004_exams_usages.sql
+│  │   ├─ 0005_assignments_attempts.sql
+│  │   ├─ 0006_reports_quarantine.sql
+│  │   └─ 0007_rls_policies.sql
+│  └─ seed.sql                 # örnek müfredat verisi
+└─ docs/  MIMARI.md  KURULUM.md
 ```
+
+Veritabanı şeması GitHub'da SQL dosyaları olarak durur. Supabase paneline elle tablo eklenmez; değişiklik her zaman yeni bir migration dosyasıyla yapılır. Böylece veritabanının geçmişi de kodla birlikte izlenir.
 
 ---
 
-## 3. Müfredat Modeli (Türkiye Yüzyılı Maarif Modeli)
+## 4. Müfredat ve sınıflandırma
 
-Müfredat, soruların bağlandığı **referans veridir**; yalnızca admin yazabilir, herkes okuyabilir.
+Müfredat **referans veridir**: herkes okur, yalnızca yönetici yazar.
 
-```
-curriculum/{gradeId}                          # "g1" … "g12"
-  ├─ level: "ilkokul" | "ortaokul" | "lise"
-  ├─ grade: 5
-  └─ subjects/{subjectId}                     # "g5-matematik"
-       ├─ name: "Matematik"
-       ├─ programYear: 2024                   # öğretim programı sürümü
-       └─ themes/{themeId}                    # Tema / Ünite
-            ├─ order: 1
-            ├─ name: "Sayılar ve Nicelikler"
-            └─ outcomes: [                    # Öğrenme çıktıları (kazanımlar)
-                 { code: "MAT.5.1.1", text: "...", 
-                   processComponents: ["a) ...", "b) ..."] }
-               ]
-```
+- `grades`: 1–12. sınıf, kademe (ilkokul / ortaokul / lise)
+- `subjects`: sınıf + ders + öğretim programı yılı
+- `themes`: tema / ünite, sıra numarası
+- `outcomes`: öğrenme çıktısı (kazanım) kodu, metni, süreç bileşenleri
 
-Her soru şu Maarif Modeli boyutlarıyla etiketlenebilir (AI da bu etiketleri önerir):
+Her soru şu Maarif Modeli boyutlarıyla etiketlenir: alan becerileri, kavramsal beceriler, sosyal-duygusal öğrenme becerileri, değerler, okuryazarlıklar.
 
-| Alan | Örnek değerler |
-|---|---|
-| `fieldSkills` (alan becerileri) | Matematiksel muhakeme, bilimsel sorgulama… |
-| `conceptualSkills` (kavramsal beceriler) | Karşılaştırma, çıkarım yapma, sorgulama, sınıflandırma… |
-| `sel` (sosyal-duygusal öğrenme) | Öz düzenleme, iş birliği, empati… |
-| `values` (değerler/erdemler) | Adalet, saygı, sorumluluk, merhamet, sabır… |
-| `literacies` (okuryazarlıklar) | Bilgi, dijital, finansal, görsel, kültürel… |
+Bloom basamağı ve zorluk: `hatirlama · anlama · uygulama · analiz · degerlendirme · sentez` ve `kolay · orta · zor`.
 
-> **Not:** Resmî öğrenme çıktısı kodları ve metinleri MEB'in yayımladığı öğretim programlarından alınmalıdır. Uydurma kod üretmemek için Adım 2'de örnek bir tohum veri seti ve **JSON/CSV içe aktarma aracı** hazırlayacağım; tam liste resmî programlardan aktarılacak.
-
-### Bloom Taksonomisi ve zorluk
-
-`bloomLevel`: `hatirlama` · `anlama` · `uygulama` · `analiz` · `degerlendirme` · `sentez` (yenilenmiş taksonomide "Yaratma")
-
-`difficulty`: `kolay` · `orta` · `zor`
-
-Varsayılan eşleme (öğretmen değiştirebilir): Hatırlama/Anlama → Kolay, Uygulama/Analiz → Orta, Değerlendirme/Sentez → Zor.
+> Resmî kazanım kodları MEB öğretim programlarından aktarılacak. Ben örnek bir tohum verisi (`seed.sql`) ve CSV içe aktarma aracı hazırlayacağım.
 
 ---
 
-## 4. Firestore Veritabanı Şeması
+## 5. Veritabanı şeması (PostgreSQL)
 
-Gösterim: `koleksiyon/{belgeId}` — alanlar tip ile.
+Aşağıdaki SQL bir taslaktır; onaydan sonra `supabase/migrations/` dosyalarına bölünecektir.
 
-### 4.1 `users/{uid}`
-```js
-{
-  role: "teacher" | "student" | "admin",   // asıl yetki custom claim'de, burada aynası
-  displayName: "Ayşe Yılmaz",
-  email: "…",
-  schoolId: "okul_123",                    // opsiyonel
-  // öğretmen
-  branches: ["g5-matematik", "g6-matematik"],
-  // öğrenci
-  grade: 6, classIds: ["class_abc"],
-  createdAt: Timestamp
-}
-```
-> KVKK: Öğrenciler çoğunlukla reşit değil → yalnızca ad-soyad, sınıf ve okul bilgisi tutulur; T.C. kimlik no vb. **tutulmaz**.
+### 5.1 Sabit değer listeleri
 
-### 4.2 `classes/{classId}` — Öğretmenin sınıf/şubesi
-```js
-{
-  teacherId: "uid_t", name: "6-A Matematik", grade: 6, subjectId: "g6-matematik",
-  joinCode: "K7P2QX",            // öğrenci bu kodla katılır
-  studentIds: ["uid_s1", "uid_s2"],
-  createdAt
-}
+```sql
+create type user_role       as enum ('teacher','student','admin');
+create type school_level    as enum ('ilkokul','ortaokul','lise');
+create type question_type   as enum ('multiple_choice','open_ended','fill_blank','matching','true_false');
+create type difficulty      as enum ('kolay','orta','zor');
+create type bloom_level     as enum ('hatirlama','anlama','uygulama','analiz','degerlendirme','sentez');
+create type question_status as enum ('draft','active','quarantined','archived');
+create type exam_kind       as enum ('written','scan_unit','scan_topic','scan_general','online_trial');
+create type exam_status     as enum ('draft','finalized','archived');
+create type attempt_status  as enum ('in_progress','submitted','expired');
+create type report_reason   as enum ('wrong_answer','multiple_correct','typo','out_of_curriculum','unclear','other');
+create type report_status   as enum ('open','accepted','rejected');
 ```
 
-### 4.3 `questions/{questionId}` — Soru Havuzu (ana koleksiyon)
-```js
-{
-  // Konumlandırma
-  grade: 6, subjectId: "g6-matematik", themeId: "g6-mat-t1",
-  outcomeCodes: ["MAT.6.1.2"],
-  // Sınıflandırma
-  type: "multiple_choice" | "open_ended" | "fill_blank" | "matching" | "true_false",
-  difficulty: "orta", bloomLevel: "uygulama",
-  fieldSkills: [...], conceptualSkills: [...], values: [...], literacies: [...],
-  // İçerik
-  stem: "Soru kökü (Markdown + KaTeX)",
-  context: "Bağlam/okuma metni (ops.)",
-  media: [{ url, alt }],
-  // Tipe göre gövde (yalnızca biri dolu)
-  options:   [{ key: "A", text: "...", isCorrect: false, distractorRationale: "Öğrencinin X kavram yanılgısı" }],
-  blanks:    [{ index: 1, acceptedAnswers: ["kesir", "kesirler"] }],
-  pairs:     [{ left: "...", right: "..." }],
-  rubric:    [{ criterion: "İşlem doğruluğu", points: 4, description: "..." }], // açık uçlu
-  answer: "B" | "metin" ,         // kanonik doğru cevap
-  solution: "Adım adım çözüm",
-  defaultPoints: 5,
-  // Yaşam döngüsü
-  status: "draft" | "active" | "quarantined" | "archived",
-  source: "ai" | "manual" | "imported",
-  aiMeta: { model, promptVersion, generatedAt, requestId },
-  ownerId: "uid_t", visibility: "private" | "school" | "public",
-  reportCount: 0,
-  usageCount: 0,                   // tüm öğretmenler genelinde toplam (istatistik)
-  stats: { attempts: 0, correct: 0, pValue: null },   // madde güçlük indeksi
-  version: 3, createdAt, updatedAt
-}
-```
-Alt koleksiyon: `questions/{id}/revisions/{revId}` — her düzenlemenin önceki hali (karantina sürecinde kim neyi değiştirdi izlenir).
+### 5.2 Müfredat
 
-### 4.4 `exams/{examId}` — Yazılı / Tarama Testi
-```js
-{
-  ownerId: "uid_t",
-  kind: "written" | "scan_unit" | "scan_topic" | "scan_general" | "online_trial",
-  title: "6-A 1. Dönem 1. Yazılı",
-  grade: 6, subjectId: "g6-matematik", classIds: ["class_abc"],
-  examDate: Timestamp,              // sınavın uygulanacağı/uygulandığı tarih
-  status: "draft" | "finalized" | "archived",
-  finalizedAt: Timestamp | null,
-  header: { school, academicYear, term, durationMin, instructions },
-  sections: [                       // sürükle-bırak ile sıralanır
-    { id: "s1", title: "A. Çoktan Seçmeli", items: [
-        { questionId: "q1", points: 5, order: 1, snapshotVersion: 3 } ] }
-  ],
-  totalPoints: 100,
-  answerKey: [{ no: 1, questionId: "q1", answer: "B", points: 5 }],   // otomatik
-  rubric:    [{ no: 7, questionId: "q7", criteria: [...] }],          // otomatik barem
-  createdAt, updatedAt
-}
-```
-> Sınav **kesinleştirildiğinde** soruların o anki sürümü `exams/{id}/snapshots/{questionId}` altına kopyalanır; böylece soru sonradan düzenlense de eski yazılı ve cevap anahtarı bozulmaz.
-
-### 4.5 ⭐ `questionUsages/{teacherId}_{questionId}` — Kullanılmış Soru Kontrol Mekanizması
-
-Her **öğretmen + soru** çifti için **tek belge**. Belge kimliği deterministik olduğu için kontrol, sorgu yerine doğrudan okuma ile yapılır (hızlı ve ucuz).
-
-```js
-{
-  teacherId: "uid_t",
-  questionId: "q1",
-  usageCount: 2,
-  lastUsedAt: Timestamp,
-  usages: [                          // en yeni başta, son 20 kayıt
-    { examId: "e9", examTitle: "6-A 1. Dönem 1. Yazılı",
-      examKind: "written", examDate: Timestamp("2026-11-12"), classIds: ["class_abc"] },
-    { examId: "e4", examTitle: "Ünite 1 Tarama Testi",
-      examKind: "scan_unit", examDate: Timestamp("2026-10-01"), classIds: ["class_abc"] }
-  ]
-}
+```sql
+create table grades   (id smallint primary key check (id between 1 and 12), level school_level not null);
+create table subjects (id text primary key, grade_id smallint references grades, name text not null, program_year int);
+create table themes   (id text primary key, subject_id text references subjects on delete cascade,
+                       sort_order int, name text not null);
+create table outcomes (code text primary key, theme_id text references themes on delete cascade,
+                       text text not null, process_components jsonb default '[]');
 ```
 
-**Akış:**
+### 5.3 Kullanıcılar ve sınıflar
 
-1. **Yazma — `finalizeExam` Cloud Function (transaction):**
-   sınav `draft → finalized` olurken içindeki her soru için `questionUsages/{uid}_{qid}` belgesine kayıt eklenir, `questions/{qid}.usageCount` artırılır. İstemci bu koleksiyona **doğrudan yazamaz** (kurallar engeller) → kayıtlar güvenilirdir. Sınav kesinleşmeden geri çekilirse (`unfinalize`) ilgili kayıt aynı mantıkla geri alınır.
-2. **Okuma — Yazılı Oluşturucu açıldığında:**
-   öğretmenin tüm kullanım belgeleri tek sorguyla (`where("teacherId","==",uid)`) dinlenir ve bellekte `Map<questionId, usage>` tutulur. Bir öğretmenin kullandığı soru sayısı makul büyüklükte olduğundan bu tek dinleyici yeterlidir; havuz listelenirken her kart anında işaretlenir.
-3. **Uyarı katmanları:**
-   - Havuz kartında rozet: `🔁 2 kez kullanıldı`
-   - Soru yazılıya eklenirken (tıklama veya sürükle-bırak) **belirgin uyarı modalı**:
-     > ⚠️ **Bu soruyu 12.11.2026 tarihli "6-A 1. Dönem 1. Yazılı" sınavında kullandınız!**
-     > [Yine de ekle] [Benzer yeni soru üret (AI)] [Vazgeç]
-   - Aynı sınıfa (`classIds` kesişimi) uygulanmışsa uyarı **kırmızı**, farklı sınıfa uygulanmışsa **turuncu** gösterilir.
-   - Henüz kesinleşmemiş *başka bir taslak* sınavda bulunan sorular için yumuşak bilgi: "Bu soru 'X' taslağında da var."
-   - Filtre seçeneği: **"Daha önce kullanmadıklarımı göster"**.
-   - Otomatik yazılı oluşturmada kullanılmış sorular varsayılan olarak **hariç tutulur**.
-4. **"Benzer yeni soru üret"**: kullanılmış sorunun kazanım/zorluk/tip bilgisi ile AI'dan *aynı ölçmeyi yapan farklı* bir soru istenir (bkz. §5).
+```sql
+-- Supabase Auth'taki her kullanıcı için bir profil (kayıt olunca tetikleyiciyle oluşur)
+create table profiles (
+  id uuid primary key references auth.users on delete cascade,
+  role user_role not null default 'student',   -- kullanıcı kendi rolünü DEĞİŞTİREMEZ
+  full_name text not null,
+  school_name text,
+  grade smallint,                               -- öğrenciler için
+  created_at timestamptz default now()
+);
 
-### 4.6 `assignments/{assignmentId}` — Online test ataması
-```js
-{
-  examId: "e4", teacherId: "uid_t", classIds: ["class_abc"],
-  title: "Ünite 1 Tarama", startsAt, endsAt, durationMin: 40,
-  settings: { shuffleQuestions: true, shuffleOptions: true,
-              showResultsImmediately: true, allowReview: true, maxAttempts: 1 },
-  status: "scheduled" | "open" | "closed"
-}
+create table classes (
+  id uuid primary key default gen_random_uuid(),
+  teacher_id uuid not null references profiles,
+  name text not null,                           -- "6-A Matematik"
+  grade smallint, subject_id text references subjects,
+  join_code text unique not null,               -- öğrenci bu kodla katılır
+  created_at timestamptz default now()
+);
+
+create table class_members (
+  class_id uuid references classes on delete cascade,
+  student_id uuid references profiles on delete cascade,
+  joined_at timestamptz default now(),
+  primary key (class_id, student_id)
+);
 ```
-Öğrenciye gösterilen **cevapsız** kopya: `assignments/{id}/publicQuestions/{qid}` (yalnızca kök, seçenekler, medya). Cevaplar burada **yoktur** — öğrenci tarayıcıda cevap anahtarını göremez.
 
-### 4.7 `attempts/{attemptId}` — Öğrencinin test denemesi
-```js
-{
-  assignmentId, examId, studentId, classId,
-  startedAt, deadlineAt,            // sunucu zamanı; süre sunucuda doğrulanır
-  submittedAt: null,
-  status: "in_progress" | "submitted" | "expired",
-  answers: { "q1": "B", "q2": null /* boş */, "q3": ["1-c","2-a"] },
-  flagged: ["q5"],                  // "sonra dönerim" işareti
-  // submitAttempt sonrası sunucu yazar:
-  result: {
-    score: 72, maxScore: 100, correct: 14, wrong: 4, blank: 2, net: 13,
-    perQuestion: { "q1": { correct: true, points: 5 } },
-    perOutcome:  { "MAT.6.1.2": { correct: 3, total: 4 } },
-    perTheme:    { "g6-mat-t1": { correct: 7, total: 10 } }
-  }
-}
+> KVKK: Öğrenciler için yalnızca ad-soyad, sınıf ve okul bilgisi tutulur; T.C. kimlik numarası tutulmaz.
+
+### 5.4 Soru havuzu
+
+```sql
+create table questions (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references profiles,
+  grade smallint not null, subject_id text not null references subjects, theme_id text references themes,
+  type question_type not null, difficulty difficulty not null, bloom bloom_level not null,
+  skills jsonb default '{}',          -- {field:[], conceptual:[], sel:[], values:[], literacies:[]}
+  stem text not null,                 -- soru kökü (Markdown + KaTeX)
+  context text,                       -- okuma metni / bağlam
+  media jsonb default '[]',           -- [{path, alt}] → Supabase Storage
+  body jsonb not null,                -- tipe göre: options / blanks / pairs / rubric
+  answer jsonb not null,              -- doğru cevap
+  solution text,                      -- çözüm yolu
+  default_points numeric default 5,
+  status question_status not null default 'draft',
+  visibility text not null default 'private' check (visibility in ('private','school','public')),
+  source text not null default 'manual' check (source in ('ai','manual','imported')),
+  ai_meta jsonb,                      -- {model, prompt_version, job_id}
+  report_count int default 0,
+  version int default 1,
+  search tsvector generated always as (to_tsvector('turkish', coalesce(stem,'') || ' ' || coalesce(context,''))) stored,
+  created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create table question_outcomes (question_id uuid references questions on delete cascade,
+                                outcome_code text references outcomes, primary key (question_id, outcome_code));
+create table question_revisions (id bigserial primary key, question_id uuid references questions on delete cascade,
+                                 version int, data jsonb, edited_by uuid references profiles, edited_at timestamptz default now());
+
+create index on questions (subject_id, theme_id, difficulty, type, status);
+create index on questions using gin (search);          -- Türkçe tam metin arama
 ```
-Öğrenci yalnızca `answers` ve `flagged` alanlarını, yalnızca `in_progress` iken yazabilir; `result` alanına yalnızca Cloud Function yazar.
 
-### 4.8 `outcomeStats/{studentId}_{subjectId}` — Kazanım karnesi (toplu)
-```js
-{
-  studentId, subjectId, classIds,
-  outcomes: { "MAT.6.1.2": { correct: 11, total: 15, lastAt } },
-  themes:   { "g6-mat-t1": { correct: 30, total: 41 } },
-  updatedAt
-}
+Örnek `body` (çoktan seçmeli):
+```json
+{"options":[
+  {"key":"A","text":"3/4","rationale":"Pay ile paydayı karıştırma yanılgısı"},
+  {"key":"B","text":"4/3","rationale":null}
+]}
 ```
-`submitAttempt` her teslimde bunu artırır → grafikler tek belge okumasıyla çizilir. Sınıf düzeyinde `classStats/{classId}_{subjectId}` aynı yapıyla tutulur (öğretmen paneli).
 
-### 4.9 `reports/{reportId}` — Hatalı soru bildirimi
-```js
-{
-  questionId, reporterId, reporterRole: "student" | "teacher",
-  reason: "wrong_answer" | "multiple_correct" | "typo" | "out_of_curriculum" | "unclear" | "other",
-  note: "B şıkkı da doğru görünüyor",
-  status: "open" | "accepted" | "rejected",
-  resolvedBy, resolvedAt, createdAt
-}
+### 5.5 Sınavlar ve ⭐ kullanılmış soru kaydı
+
+```sql
+create table exams (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references profiles,
+  kind exam_kind not null, title text not null,
+  grade smallint, subject_id text references subjects,
+  exam_date date,                      -- uygulanacağı / uygulandığı tarih
+  status exam_status not null default 'draft',
+  header jsonb default '{}',           -- okul, dönem, süre, yönerge
+  sections jsonb default '[]',         -- [{id, title}] bölüm başlıkları
+  finalized_at timestamptz,
+  created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create table exam_classes (exam_id uuid references exams on delete cascade,
+                           class_id uuid references classes, primary key (exam_id, class_id));
+
+create table exam_items (
+  exam_id uuid references exams on delete cascade,
+  question_id uuid references questions,
+  section_id text, position int not null,   -- sürükle-bırak sırası
+  points numeric not null,
+  snapshot jsonb,                           -- kesinleşince sorunun o anki tam hali
+  primary key (exam_id, question_id)
+);
+
+-- KULLANILMIŞ SORU KAYDI: yalnızca finalize_exam() yazar
+create table question_usages (
+  id bigserial primary key,
+  teacher_id uuid not null references profiles,
+  question_id uuid not null references questions,
+  exam_id uuid not null references exams,
+  exam_title text not null,                 -- sınav silinse/yeniden adlandırılsa bile kayıt korunur
+  exam_kind exam_kind not null,
+  exam_date date not null,
+  class_ids uuid[] default '{}',
+  created_at timestamptz default now(),
+  unique (exam_id, question_id)
+);
+create index on question_usages (teacher_id, question_id, exam_date desc);
 ```
-**Karantina kuralı (`onReportCreated`):**
-- Bir **öğretmen** bildirimi **veya** 3 farklı **öğrenci** bildirimi → `questions.status = "quarantined"`.
-- Karantinadaki soru; havuz aramasında, otomatik yazılıda ve yeni online atamalarda **kullanılamaz**; sahibine bildirim düşer.
-- Sahibi düzenler (yeni `revision`) → "Yeniden aktifleştir" ya da "Arşivle". Devam eden online testlerde soru puanlamadan çıkarılabilir (iptal sorusu).
 
-### 4.10 `aiJobs/{jobId}` — AI üretim kayıtları (maliyet / kota / denetim)
-```js
-{ teacherId, request: { grade, subjectId, themeId, outcomeCodes, type, difficulty, bloomLevel, count },
-  status: "running" | "done" | "failed", questionIds: [...],
-  usage: { inputTokens, outputTokens }, error, createdAt }
+**Kullanılmış soru mekanizması nasıl çalışır?**
+
+1. **Kayıt.** Öğretmen "Sınavı Kesinleştir" dediğinde `finalize_exam(exam_id)` fonksiyonu çalışır. Bu fonksiyon tek bir işlem içinde:
+   - sınavın sahibini ve taslak olduğunu doğrular,
+   - her sorunun o anki halini `exam_items.snapshot` alanına kopyalar (soru sonradan düzenlense de eski yazılı ve cevap anahtarı bozulmaz),
+   - her soru için `question_usages` tablosuna bir satır ekler,
+   - sınavın durumunu `finalized` yapar.
+
+   Tarayıcının bu tabloya doğrudan yazma izni yoktur (RLS). Bu yüzden kayıtlar güvenilirdir.
+
+2. **Sorgulama.** Yazılı oluşturucu açılınca tek bir çağrı yapılır:
+   ```sql
+   create function my_question_usage_summary()
+   returns table (question_id uuid, usage_count int, last_exam_title text,
+                  last_exam_date date, last_class_ids uuid[])
+   language sql stable security invoker as $$
+     select distinct on (question_id)
+            question_id,
+            count(*) over (partition by question_id)::int,
+            exam_title, exam_date, class_ids
+     from question_usages
+     where teacher_id = auth.uid()
+     order by question_id, exam_date desc;
+   $$;
+   ```
+   Sonuç tarayıcıda bir sözlükte tutulur, böylece havuzdaki her soru kartı anında işaretlenir.
+
+3. **Uyarı.** Kullanılmış bir soru yazılıya eklenirken (tıklama ya da sürükle-bırak):
+   > ⚠️ **Bu soruyu 12.11.2026 tarihli "6-A 1. Dönem 1. Yazılı" sınavında kullandınız!**
+   > [Yine de ekle] [Benzer yeni soru üret] [Vazgeç]
+
+   - Aynı sınıfta kullanıldıysa uyarı **kırmızı**, farklı sınıfta kullanıldıysa **turuncu** olur.
+   - Havuz kartlarında rozet görünür: `🔁 2 kez kullanıldı`.
+   - Filtre: **"Daha önce kullanmadıklarımı göster"**.
+   - Otomatik yazılı oluşturucu kullanılmış soruları varsayılan olarak almaz.
+   - Soru henüz kesinleşmemiş başka bir taslakta da varsa yumuşak bir bilgi notu çıkar.
+
+4. **Geri alma.** Kesinleşmiş bir sınav yanlışlıkla kesinleştirildiyse `unfinalize_exam()` ilgili kullanım kayıtlarını siler (sınav uygulanmadan önce).
+
+### 5.6 Online testler
+
+```sql
+create table assignments (
+  id uuid primary key default gen_random_uuid(),
+  exam_id uuid not null references exams, teacher_id uuid not null references profiles,
+  title text not null, starts_at timestamptz, ends_at timestamptz,
+  duration_min int not null,
+  settings jsonb default '{"shuffle_questions":true,"shuffle_options":true,"show_results":true,"max_attempts":1}'
+);
+create table assignment_classes (assignment_id uuid references assignments on delete cascade,
+                                 class_id uuid references classes, primary key (assignment_id, class_id));
+
+create table attempts (
+  id uuid primary key default gen_random_uuid(),
+  assignment_id uuid not null references assignments, student_id uuid not null references profiles,
+  started_at timestamptz default now(), deadline_at timestamptz not null,   -- sunucu saatiyle
+  submitted_at timestamptz, status attempt_status default 'in_progress',
+  score numeric, max_score numeric, correct int, wrong int, blank int
+);
+create table attempt_answers (
+  attempt_id uuid references attempts on delete cascade,
+  question_id uuid references questions,
+  answer jsonb,                         -- null = boş bırakıldı
+  flagged boolean default false,        -- "sonra dönerim"
+  is_correct boolean, points numeric,   -- yalnızca submit_attempt() doldurur
+  primary key (attempt_id, question_id)
+);
 ```
-Öğretmen başına günlük kota bu koleksiyondan hesaplanır.
 
-### 4.11 İndeksler (ilk set)
-- `questions`: `subjectId + themeId + difficulty + type + status`
-- `questions`: `ownerId + status + updatedAt desc`
-- `questionUsages`: `teacherId + lastUsedAt desc`
-- `attempts`: `studentId + submittedAt desc`, `assignmentId + status`
-- `reports`: `status + createdAt`
+**Cevap anahtarı öğrenciye gitmez.** Öğrencinin `questions` tablosunu okuma izni yoktur. Bunun yerine:
+
+- `start_attempt(assignment_id)`: süreyi sunucu saatiyle başlatır, soruları **cevapsız** olarak döndürür (kök, şıklar, görsel).
+- `save_answer(...)`: her cevap değişikliğini kaydeder. Sayfa yenilense ya da bağlantı kopsa da test kaldığı yerden devam eder.
+- `submit_attempt(attempt_id)`: sunucuda puanlar, sonucu döndürür. Süre dolduysa geç cevapları kabul etmez.
+
+### 5.7 Kazanım analizi (görünümler)
+
+Ayrı bir istatistik tablosu gerekmez; PostgreSQL bunu cevaplardan hesaplar:
+
+```sql
+create view student_outcome_stats as
+select a.student_id, qo.outcome_code, o.theme_id,
+       count(*) filter (where aa.is_correct) as correct,
+       count(*) as total
+from attempt_answers aa
+join attempts a           on a.id = aa.attempt_id and a.status = 'submitted'
+join question_outcomes qo on qo.question_id = aa.question_id
+join outcomes o           on o.code = qo.outcome_code
+group by 1,2,3;
+```
+
+- Öğrenci, yalnızca kendi satırlarını görür.
+- Öğretmen, sınıfındaki öğrencilerin satırlarını görür.
+- Aynı mantıkla `class_outcome_stats` (sınıf ısı haritası) ve `question_item_stats` (madde analizi: soru başına doğru yüzdesi, hatalı ya da çok zor soruları yakalamak için) görünümleri hazırlanır.
+- Veri büyüdüğünde bunlar "materialized view"a çevrilip gece yenilenebilir.
+
+### 5.8 Hatalı soru bildirimi ve karantina
+
+```sql
+create table reports (
+  id uuid primary key default gen_random_uuid(),
+  question_id uuid not null references questions, reporter_id uuid not null references profiles,
+  reason report_reason not null, note text,
+  status report_status default 'open',
+  resolved_by uuid references profiles, resolved_at timestamptz,
+  created_at timestamptz default now(),
+  unique (question_id, reporter_id)          -- aynı kişi aynı soruyu bir kez bildirir
+);
+```
+
+`reports` tablosuna satır eklenince bir tetikleyici çalışır:
+
+- Bir **öğretmen** bildirimi ya da **3 farklı öğrencinin** bildirimi → soru `quarantined` olur.
+- Karantinadaki soru havuz aramasında, otomatik yazılıda ve yeni testlerde kullanılamaz.
+- Soru sahibi düzeltir (önceki hali `question_revisions` tablosuna yazılır), sonra yeniden aktifleştirir ya da arşivler.
+
+### 5.9 Yapay zeka işleri (kota ve maliyet takibi)
+
+```sql
+create table ai_jobs (
+  id uuid primary key default gen_random_uuid(),
+  teacher_id uuid not null references profiles,
+  request jsonb not null, status text default 'running',
+  question_ids uuid[], input_tokens int, output_tokens int, error text,
+  created_at timestamptz default now()
+);
+```
+
+Öğretmen başına günlük üretim sınırı bu tablodan hesaplanır.
 
 ---
 
-## 5. AI Soru Üretim Hattı
+## 6. Güvenlik: Satır Bazlı Güvenlik (RLS)
 
-```
-Öğretmen formu ─► generateQuestions (callable, App Check + kota)
-   1. Müfredattan tema & öğrenme çıktısı metinlerini çek (bağlam)
-   2. Sistem istemi: Maarif Modeli ilkeleri, sınıf düzeyine uygun dil,
-      Bloom basamağı tanımı, çeldirici kuralları (her çeldirici bir
-      kavram yanılgısına dayanmalı), Türkçe yazım kuralları
-   3. Claude API çağrısı — output_config.format ile JSON Şema
-      (soru tipine göre şema: options / blanks / pairs / rubric)
-   4. Sunucuda doğrulama: tek doğru şık, şık sayısı (ilkokul 3, diğer 4–5),
-      cevap–çözüm tutarlılığı, yinelenen soru kontrolü (normalize metin hash'i)
-   5. questions'a status="draft" olarak yaz → öğretmen önizler, düzenler, onaylar → "active"
-```
+Her tabloda RLS **açık** olacak. Kurallar şöyle özetlenir:
 
-- **Model:** varsayılan `claude-opus-5-5` (en iyi kalite); model adı ortam değişkeninden okunur, gerekirse değiştirilebilir. Yanıt ret (`refusal`) durumları için sunucu tarafı yedek model (fallback) açık olacak.
-- **Sağlayıcı adaptörü:** `functions/src/ai/provider.ts` arayüzü sayesinde ileride başka bir sağlayıcı eklenebilir; uygulama kodu değişmez.
-- **Kalite güvencesi:** AI soruları hiçbir zaman doğrudan "active" olmaz; **öğretmen onayı zorunlu.**
-- **Benzer soru üretimi:** mevcut soru örnek olarak verilir, "aynı öğrenme çıktısını aynı Bloom basamağında, farklı bağlam ve sayılarla ölç" talimatıyla yeni soru istenir.
-
----
-
-## 6. Yazılı Oluşturucu ve Dışa Aktarım
-
-- **Manuel mod:** solda filtrelenmiş havuz, sağda yazılı kağıdı; SortableJS ile havuzdan sürükle, bölümler arası taşı, sırala. Her eklemede §4.5 uyarı kontrolü çalışır.
-- **Otomatik mod:** "Tema dağılımı + zorluk oranı (%30 kolay / %50 orta / %20 zor) + soru tipi + toplam puan" girilir; algoritma kullanılmamış ve aktif sorulardan dengeli seçim yapar, eksik kalırsa "AI ile tamamla" önerir.
-- **Cevap anahtarı & barem:** sınav her değiştiğinde otomatik yeniden hesaplanır; açık uçlu sorular için ölçüt bazlı dereceli puanlama anahtarı (rubric) eklenir.
-- **Dışa aktarım:** PDF (pdfmake: başlık bloğu, ad-soyad/numara alanı, iki sütun seçeneği, A/B kitapçık — şık karıştırma) ve Word (`docx`). Cevap anahtarı + barem ayrı sayfa/ayrı dosya.
-
----
-
-## 7. Online Test ve Analiz
-
-- `startAttempt` → sunucu `deadlineAt` belirler; istemci sayacı yalnızca gösterim içindir, **süre sunucuda doğrulanır**.
-- Cevaplar her değişimde (debounce) Firestore'a yazılır → sayfa yenilense/bağlantı kopsa bile devam edilir.
-- Arayüz: soru paleti (cevaplandı / boş / işaretli), önceki-sonraki, boş bırak, "Sınavı Bitir" onayı, süre bitince otomatik teslim.
-- `submitAttempt` → sunucuda puanlama → sonuç ekranı (doğru/yanlış, doğru cevap, çözüm) + `outcomeStats` güncellemesi.
-- **Grafikler (Chart.js):** öğrenci için tema radar grafiği ve kazanım çubuk grafiği (%50 altı kırmızı), öğretmen için sınıf ısı haritası (öğrenci × kazanım) ve madde analizi (soru başına doğru yüzdesi → hatalı/çok zor soru tespiti).
-
----
-
-## 8. Güvenlik Kuralları (özet)
-
-| Koleksiyon | Öğretmen | Öğrenci |
+| Tablo | Öğretmen | Öğrenci |
 |---|---|---|
-| `curriculum` | okur | okur |
-| `questions` | kendi sorusunu yazar; `public/school` olanları okur | **erişemez** (cevaplar burada) |
-| `questionUsages` | kendi belgelerini okur, **yazamaz** (yalnız Function) | erişemez |
-| `exams` | kendi sınavları | erişemez |
-| `assignments` + `publicQuestions` | kendi atamaları | sınıfına atananları okur |
-| `attempts` | kendi sınıflarınınkini okur | kendi denemesini okur; `in_progress` iken yalnız `answers/flagged` yazar |
-| `outcomeStats` | sınıfındaki öğrencilerinkini okur | kendisininkini okur |
-| `reports` | oluşturur; kendi sorularına geleni yönetir | oluşturur |
+| müfredat tabloları | okur | okur |
+| `profiles` | kendini + sınıfındaki öğrencileri okur; `role` alanını değiştiremez | kendini okur |
+| `questions` | kendi sorularını yazar; `public` olanları okur | **erişemez** |
+| `question_usages` | kendi kayıtlarını okur, **yazamaz** | erişemez |
+| `exams`, `exam_items` | kendi sınavları | erişemez |
+| `assignments` | kendi atamaları | sınıfına atananları okur |
+| `attempts`, `attempt_answers` | sınıfındakileri okur | kendininkini okur; yazma yalnızca RPC ile |
+| `reports` | ekler; kendi sorusuna geleni yönetir | ekler |
 
-Rol, Firebase Auth **custom claim** (`request.auth.token.role`) ile kontrol edilir; istemcinin `users` belgesindeki rolü değiştirmesi yetki kazandırmaz.
+Rol kontrolü için yardımcı fonksiyon: `create function auth_role() returns user_role ... select role from profiles where id = auth.uid()`.
 
 ---
 
-## 9. Yol Haritası
+## 7. Yapay zeka soru üretim hattı (Vercel Function)
+
+```
+Tarayıcı ──POST /api/generate-questions (Authorization: Bearer <Supabase oturum anahtarı>)──►
+  1. Oturum anahtarını Supabase ile doğrula, rol = teacher mı?
+  2. Günlük kota kontrolü (ai_jobs)
+  3. Seçilen tema ve kazanım metinlerini veritabanından çek
+  4. Claude API çağrısı: Maarif Modeli ilkeleri, sınıf düzeyi, Bloom tanımı,
+     çeldirici kuralları; JSON şemasıyla yapılandırılmış çıktı
+  5. Doğrulama: tek doğru şık, şık sayısı, cevap ile çözüm tutarlı mı,
+     benzer soru var mı (pg_trgm benzerlik araması)
+  6. Soruları status='draft' olarak kaydet → öğretmen önizler, düzenler, onaylar
+```
+
+- Yapay zekanın ürettiği sorular **öğretmen onayı olmadan** aktif olmaz.
+- Uzun süren üretimler için fonksiyonun süre sınırı (`maxDuration`) `vercel.json` içinde ayarlanır; gerekirse sorular tek tek akış (streaming) halinde gönderilir.
+- Model adı ortam değişkeninden okunur (`AI_MODEL`), kod değiştirmeden değiştirilebilir.
+
+---
+
+## 8. Yazılı oluşturucu, online test, analiz
+
+Firebase planındaki işlevler aynen korunuyor:
+
+- **Yazılı oluşturucu:** manuel (sürükle-bırak) ve otomatik (tema dağılımı + zorluk oranı) mod. Cevap anahtarı ve barem otomatik oluşur. PDF ve Word çıktısı alınır, A/B kitapçık seçeneği vardır.
+- **Online test:** sayaç, soru paleti, boş bırakma, işaretleme, "Sınavı Bitir", süre dolunca otomatik teslim, anında sonuç ekranı.
+- **Analiz:** öğrenci için tema radarı ve kazanım çubuk grafiği; öğretmen için sınıf ısı haritası ve madde analizi.
+
+---
+
+## 9. Ücretsiz planların sınırları
+
+| Servis | Dikkat edilecek nokta |
+|---|---|
+| Supabase Free | 500 MB veritabanı, 1 GB dosya deposu. **7 gün hiç kullanılmayan proje duraklatılır**; panelden tek tıkla yeniden açılır. Gerçek kullanımda Pro plan önerilir. |
+| Vercel Hobby | Kişisel ve **ticari olmayan** kullanım içindir. Okul ya da ücretli kullanımda Pro plan gerekir. Fonksiyon süre sınırları plana göre değişir. |
+| Claude API | Kullandıkça ödenir. Günlük kota ile maliyet kontrol altında tutulur. |
+
+---
+
+## 10. Yol haritası
 
 | Adım | Kapsam |
 |---|---|
-| **1** | Bu belge — mimari, şema, kullanılmış soru mekanizması ✅ |
-| **2** | Vite + Tailwind iskeleti, router, rol bazlı giriş ekranları, öğretmen/öğrenci panel düzenleri, havuz ve yazılı oluşturucu arayüzleri (önce sahte veriyle), sürükle-bırak, uyarı modalı, PDF/Word dışa aktarım |
-| **3** | Firebase entegrasyonu (Auth, Firestore servis katmanı, kurallar, emülatör), Cloud Functions, Claude ile soru üretimi, `finalizeExam` + `questionUsages` |
-| **4** | Online test oynatıcı, `startAttempt/submitAttempt`, kazanım analizi grafikleri, hatalı soru bildirimi ve karantina akışı |
+| **1** | Mimari ve şema (bu belge) + kurulum rehberi ✅ |
+| **2** | Vite + Tailwind iskeleti, Vercel'e ilk yayın, Supabase giriş/kayıt, rol bazlı paneller, havuz ve yazılı oluşturucu arayüzleri, sürükle-bırak, uyarı penceresi, PDF/Word çıktısı |
+| **3** | Migration dosyaları, RLS kuralları, RPC fonksiyonları (`finalize_exam` vb.), `/api/generate-questions` ile yapay zeka entegrasyonu |
+| **4** | Online test oynatıcı, puanlama, kazanım analizi grafikleri, hatalı soru bildirimi ve karantina |
