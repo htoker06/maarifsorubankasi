@@ -460,6 +460,6 @@ Firebase planındaki işlevler aynen korunuyor:
 | Adım | Kapsam |
 |---|---|
 | **1** | Mimari ve şema (bu belge) + kurulum rehberi ✅ |
-| **2** | Vite + Tailwind iskeleti, Vercel'e ilk yayın, Supabase giriş/kayıt, rol bazlı paneller, havuz ve yazılı oluşturucu arayüzleri, sürükle-bırak, uyarı penceresi, PDF/Word çıktısı |
-| **3** | Migration dosyaları, RLS kuralları, RPC fonksiyonları (`finalize_exam` vb.), `/api/generate-questions` ile yapay zeka entegrasyonu |
+| **2** | Vite + Tailwind iskeleti, rol bazlı paneller (Demo Modu), soru havuzu ve düzenleyici, sürükle-bırak yazılı oluşturucu, kullanılmış soru uyarısı, otomatik oluşturma, cevap anahtarı, PDF/Word çıktısı ✅ |
+| **3** | Migration dosyaları, RLS kuralları, RPC fonksiyonları (`finalize_exam` vb.), Supabase giriş/kayıt (profil tablosuna bağlı olduğu için bu adıma alındı), Demo deposunun Supabase deposuyla değiştirilmesi, `/api/generate-questions` ile yapay zeka entegrasyonu |
 | **4** | Online test oynatıcı, puanlama, kazanım analizi grafikleri, hatalı soru bildirimi ve karantina |

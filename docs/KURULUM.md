@@ -78,7 +78,7 @@ Bu anahtar `ANTHROPIC_API_KEY` adıyla **yalnızca Vercel'e** girilecek.
    - *Build Command:* `npm run build`
    - *Output Directory:* `dist`
 
-> İlk yayın Adım 2'deki kod `main` dalına geldikten sonra başarılı olur. Şu an depoda yalnızca belgeler olduğu için Vercel'in hata vermesi normaldir.
+> Uygulama ortam değişkenleri olmadan da **Demo Modu**'nda çalışır; yani Vercel'e bağlar bağlamaz siteyi görebilirsiniz. Vercel `main` dalını canlı adreste, diğer dalları (ör. `claude/...`) ayrı önizleme adreslerinde yayınlar.
 
 ### 4.2 Ortam değişkenleri
 **Project → Settings → Environment Variables** bölümüne ekleyin. *Production*, *Preview* ve *Development* kutularının üçü de işaretli olsun.
