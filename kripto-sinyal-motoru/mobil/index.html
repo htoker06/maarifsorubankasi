@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kırılım Tarayıcı</title>
+  <meta name="description" content="Dipte akümüle olmuş ve kırılım yapan kripto paraları manipülasyon filtreleriyle tarar.">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kırılım">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 3 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6h5v5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Kırılım Tarayıcı</span>
+    </div>
+    <button id="installBtn" class="ghost small" hidden>Ana ekrana ekle</button>
+  </header>
+
+  <main>
+    <!-- TARAMA -->
+    <section id="tab-scan" class="tab active" aria-label="Tarama">
+      <div id="macroCard" class="card macro empty">
+        <div class="muted">Piyasa rejimi henüz hesaplanmadı. Taramayı başlattığında burada görünecek.</div>
+      </div>
+
+      <div class="card action">
+        <button id="scanBtn" class="primary big">Taramayı Başlat</button>
+        <div id="progress" class="progress" hidden>
+          <div class="bar"><div id="progressFill"></div></div>
+          <div class="progress-row">
+            <span id="progressText">Hazırlanıyor…</span>
+            <button id="cancelBtn" class="ghost small">Durdur</button>
+          </div>
+        </div>
+        <div id="scanMeta" class="muted small-text"></div>
+      </div>
+
+      <div id="scanError" class="card error" hidden></div>
+      <h2 id="signalsTitle" class="section-title" hidden></h2>
+      <div id="signals"></div>
+      <details id="nearWrap" class="card near" hidden>
+        <summary>Eşiğe yaklaşıp elenenler <span id="nearCount" class="pill"></span></summary>
+        <div id="near"></div>
+      </details>
+    </section>
+
+    <!-- COİN İNCELE -->
+    <section id="tab-coin" class="tab" aria-label="Coin incele">
+      <form id="coinForm" class="card">
+        <label for="coinInput" class="label">Coin sembolü</label>
+        <div class="row">
+          <input id="coinInput" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="örn. SOL, INJ, FET" required>
+          <button class="primary" type="submit">İncele</button>
+        </div>
+        <p class="muted small-text">Seçtiğin coinin tüm şartları tek tek geçip geçmediğini gerekçesiyle gösterir.</p>
+      </form>
+      <div id="coinError" class="card error" hidden></div>
+      <div id="coinResult"></div>
+    </section>
+
+    <!-- AYARLAR -->
+    <section id="tab-settings" class="tab" aria-label="Ayarlar">
+      <div class="card">
+        <label class="label" for="minScore">Minimum Kesinlik Skoru: <b id="minScoreVal"></b></label>
+        <input type="range" id="minScore" min="60" max="95" step="1">
+        <p class="muted small-text">85 çok seçicidir; çoğu gün sinyal çıkmaz. Düşürürsen daha fazla aday görürsün ama riski de artar.</p>
+      </div>
+      <div class="card">
+        <label class="label" for="minVol">Minimum 24 saatlik hacim (milyon USD)</label>
+        <input type="number" id="minVol" min="1" max="500" step="1" inputmode="numeric">
+      </div>
+      <div class="card">
+        <label class="switch"><input type="checkbox" id="ignoreLock"><span>Makro kilidi yok say (sadece inceleme)</span></label>
+        <p class="muted small-text">Piyasa riskliyken de adayları görmek için. Kilit şartı yine "geçmedi" olarak görünür, sinyal üretilmez.</p>
+        <label class="switch"><input type="checkbox" id="strictData"><span>Sıfır tolerans: verisi eksik coini ele</span></label>
+        <label class="switch"><input type="checkbox" id="requireAth"><span>ATH'den en az %70 düşüş şartı</span></label>
+      </div>
+      <button id="resetSettings" class="ghost">Varsayılan ayarlara dön</button>
+      <div class="card about">
+        <h3>Nasıl çalışır?</h3>
+        <p>Tarama telefonunda yapılır: Binance'ten veri çekilir, sonuç hiçbir sunucuya gönderilmez. Önce piyasa genelinin
+        uygun olup olmadığına bakılır (makro kilit). Sonra 5 milyon dolar üstü hacimli tüm coinler 23 şarttan geçirilir:
+        dipte uzun sıkışma, formasyon kırılımı, MA200 kırılımı, hacim patlaması, RSI/MACD momentumu ve sahte hacim,
+        stop avı, kaldıraçlı tuzak, sahte emir duvarı kontrolleri.</p>
+        <p>Sinyaller yalnızca <b>kapanmış günlük mumlarla</b> üretilir. Günlük mum Türkiye saatiyle 03:00'te kapanır;
+        en anlamlı tarama sabah yapılan taramadır.</p>
+        <p class="warn">Hiçbir filtre yükselişi garanti etmez. Yatırım tavsiyesi değildir.</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sekmeler">
+    <button data-tab="scan" class="active"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 3 8-9"/></svg>Tarama</button>
+    <button data-tab="coin"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>Coin İncele</button>
+    <button data-tab="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Ayarlar</button>
+  </nav>
+
+  <div id="iosHint" class="ios-hint" hidden>
+    Uygulama gibi kullanmak için Safari'de <b>Paylaş</b> düğmesine, ardından <b>Ana Ekrana Ekle</b>'ye dokun.
+    <button class="ghost small" id="iosHintClose">Tamam</button>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

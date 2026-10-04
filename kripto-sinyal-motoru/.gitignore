@@ -2,3 +2,4 @@ __pycache__/
 .pytest_cache/
 .breakout_state.json
 *.json.out
+mobil/test/fixtures.json

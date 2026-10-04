@@ -138,7 +138,40 @@ Eksik veri (örn. emir defteri alınamadı) varsayılan olarak **ret** sebebidir
 
 ---
 
-## 3. Kurulum ve kullanım
+## 3. Telefon uygulaması (`mobil/`)
+
+Motorun JavaScript'e aktarılmış hâli; telefonun tarayıcısında çalışır, ana ekrana uygulama olarak eklenir
+(Android ve iPhone). Sunucu yoktur: veriler telefonun kendi bağlantısıyla Binance ve CoinGecko'dan çekilir,
+sonuçlar yalnızca o telefonda saklanır.
+
+- **Tarama** sekmesi: makro rejim kartı, tek tuşla tarama, sinyal kartları (skor, formasyon, işlem planı, tüm şartlar),
+  eşiğe yaklaşıp elenenler.
+- **Coin İncele**: tek bir coinin her şartı geçip geçmediğini gerekçesiyle gösterir.
+- **Ayarlar**: minimum skor, minimum hacim, makro kilidi yok say, sıfır tolerans, ATH şartı.
+- **Mobil veri tasarrufu:** önce tüm coinler için sadece son 30 günlük mum indirilir; hacim artışı olmayanlar için
+  1000 günlük geçmiş hiç indirilmez. Emir defteri ve işlem kaydı yalnızca son adaylar için çekilir.
+
+### Yayına alma (Vercel, ücretsiz, bir kez yapılır)
+
+1. <https://vercel.com> → **Add New… → Project** → `maarifsorubankasi` deposu → **Import**.
+2. **Root Directory** → **Edit** → `kripto-sinyal-motoru/mobil` seç. **Framework Preset:** *Other*. Build ayarlarına dokunma.
+3. **Deploy**. Çıkan adresi (örn. `https://kirilim-tarayici.vercel.app`) telefonda aç.
+4. **Android (Chrome):** üstteki *Ana ekrana ekle* düğmesi ya da menü → *Uygulamayı yükle*.
+   **iPhone (Safari):** *Paylaş* → *Ana Ekrana Ekle*.
+
+Vercel, deponun ana dalını (`main`) yayınlar; bu kod ana dala birleştirilmeden önce canlı adreste görünmez.
+
+### Doğrulama
+
+```bash
+python tests/export_js_fixtures.py          # Python motorundan 19 senaryo üretir
+node --test mobil/test/parity.test.mjs      # JS motoru aynı şartları, skoru, stopu ve hedefleri vermeli
+python -m pytest -q tests/test_mobile_e2e.py  # gerçek Chromium + telefon ekranı + sahte Binance yanıtları
+```
+
+---
+
+## 4. Bilgisayarda kurulum ve kullanım
 
 ```bash
 cd kripto-sinyal-motoru
