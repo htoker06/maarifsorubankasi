@@ -1,0 +1,7 @@
+ccxt>=4.3
+aiohttp>=3.9
+pandas>=2.1
+numpy>=1.26
+rich>=13.0
+# Opsiyonel: TA-Lib (C kütüphanesi gerektirir). Kuruluysa indikatörler otomatik olarak onu kullanır.
+# TA-Lib>=0.4.28
