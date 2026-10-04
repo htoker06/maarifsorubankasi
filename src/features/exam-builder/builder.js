@@ -342,10 +342,7 @@ export async function render(root, { params }) {
           { label: 'Yine de ekle', value: 'add', className: warning.level === 'danger' ? 'btn-danger' : 'btn-warning' },
         ],
       });
-      if (choice === 'similar') {
-        toast('Benzer soru üretimi, yapay zeka bağlantısıyla (Adım 3) etkinleşecek.', 'info', 5000);
-        return;
-      }
+      if (choice === 'similar') return generateSimilar(q, sectionId, index);
       if (choice !== 'add') return;
     }
 
@@ -359,6 +356,45 @@ export async function render(root, { params }) {
     scheduleSave();
     renderPaper();
     renderPoolList();
+  }
+
+  /** Kullanılmış bir sorunun yerine aynı kazanımı ölçen yeni bir soru üretir ve onaylanırsa yazılıya ekler. */
+  async function generateSimilar(source, sectionId, index) {
+    if (!api.ai.available) return toast('Benzer soru üretimi Demo Modu\'nda kullanılamaz; Supabase ve Claude API bağlandığında etkinleşir.', 'info', 6000);
+    toast('Benzer soru üretiliyor… (30-60 saniye sürebilir)', 'info', 8000);
+    let out;
+    try {
+      out = await api.ai.generate({ similarToId: source.id, count: 1 });
+    } catch (err) {
+      return toast(err.message, 'error', 6000);
+    }
+    const fresh = out.questions[0];
+    if (!fresh) return toast('Yeni soru denetimden geçemedi. Tekrar deneyin.', 'warning');
+    questionsById[fresh.id] = fresh;
+    const choice = await openModal({
+      title: 'Benzer yeni soru üretildi',
+      size: 'lg',
+      body: html`<p class="muted mb-3 text-sm">Aynı öğrenme çıktısını ölçen yeni soru taslak olarak havuza eklendi. İnceleyin:</p>
+        <div class="rounded-lg border border-slate-200 p-3 dark:border-slate-700">${questionBody(fresh, { showAnswer: true })}</div>
+        ${fresh.solution ? html`<p class="mt-2 text-xs text-slate-500">Çözüm: ${fresh.solution}</p>` : ''}`,
+      actions: [
+        { label: 'Taslak olarak bırak', value: null },
+        { label: 'Onayla ve yazılıya ekle', value: 'add', className: 'btn-primary' },
+      ],
+    });
+    if (choice !== 'add') {
+      renderPoolList();
+      return;
+    }
+    questionsById[fresh.id] = await api.questions.setStatus(fresh.id, 'active');
+    const section = exam.sections.find((s) => s.id === sectionId) ?? exam.sections[0];
+    const item = { questionId: fresh.id, points: fresh.defaultPoints ?? 5 };
+    if (index === null || index > section.items.length) section.items.push(item);
+    else section.items.splice(index, 0, item);
+    scheduleSave();
+    renderPaper();
+    renderPoolList();
+    toast('Yeni soru onaylandı ve yazılıya eklendi.', 'success');
   }
 
   // ------------------------------------------------------------ otomatik oluşturma

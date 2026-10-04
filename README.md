@@ -10,10 +10,10 @@ Türkiye Yüzyılı Maarif Modeli'ne uygun, yapay zeka destekli soru bankası, y
 |---|---|---|
 | 1 | Mimari ve veritabanı tasarımı ([docs/MIMARI.md](docs/MIMARI.md)) | ✅ |
 | 2 | Arayüz: paneller, soru havuzu, yazılı oluşturucu, kullanılmış soru uyarısı, PDF/Word | ✅ (Demo Modu) |
-| 3 | Supabase (veritabanı + giriş) ve yapay zeka ile soru üretimi | ⏳ |
+| 3 | Supabase (veritabanı, giriş, güvenlik kuralları) ve yapay zeka ile soru üretimi | ✅ (canlı test bekliyor) |
 | 4 | Online test, kazanım analizi, hatalı soru bildirimi | ⏳ |
 
-Uygulama şu an **Demo Modu**'nda çalışır: örnek veriler tarayıcıda saklanır, hesap gerekmez.
+Supabase ortam değişkenleri tanımlı değilse uygulama **Demo Modu**'nda çalışır: örnek veriler tarayıcıda saklanır, hesap gerekmez.
 
 **Resmî müfredat:** `data/curriculum/meb_tymm_tum_siniflar.csv` — MEB Türkiye Yüzyılı Maarif Modeli programlarından çekilmiş 1–12. sınıf verisi (153 ders, 808 tema, 7.369 öğrenme çıktısı). Yönetici paneli → Müfredat ekranından yüklenir. Ayrıntılar: [docs/MUFREDAT-CSV.md](docs/MUFREDAT-CSV.md)
 
@@ -23,6 +23,7 @@ Uygulama şu an **Demo Modu**'nda çalışır: örnek veriler tarayıcıda sakla
 npm install
 npm run dev      # http://localhost:5173
 npm test         # birim testleri
+npm run test:db  # veritabanı kuralları (yerel PostgreSQL gerekir)
 npm run build    # dist/ klasörüne üretim derlemesi
 ```
 

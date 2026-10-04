@@ -48,13 +48,20 @@ Yapmanız gereken bir şey yok. Yalnızca deponun **gizli (private)** olduğunda
 - *Site URL:* Vercel adresiniz (4. adımdan sonra gelecek, örn. `https://sorubankasimatik.vercel.app`)
 - *Redirect URLs:* aynı adres ve geliştirme için `http://localhost:5173`
 
-### 2.4 Veritabanı tablolarının oluşturulması
-Tabloları **elle oluşturmayın.** Adım 3'te `supabase/migrations/` klasöründeki SQL dosyalarını hazırlayacağım. İki yolla uygulanabilir:
+### 2.4 Veritabanı tablolarının oluşturulması (tek seferlik)
+1. GitHub'da depodaki **`supabase/migrations/20261004000001_init.sql`** dosyasını açın → sağ üstteki **Copy raw file** (kopyala) düğmesine basın.
+2. Supabase paneli → sol menü **SQL Editor** → **New query** → kopyaladığınız metni yapıştırın → **Run**.
+3. Alt kısımda **Success. No rows returned** görmelisiniz. Sol menüdeki **Table Editor**'de `profiles`, `questions`, `exams` vb. tablolar görünür.
 
-- **Kolay yol:** Supabase paneli → **SQL Editor** → dosyanın içeriğini yapıştır → *Run*. Dosyalar numara sırasıyla çalıştırılır.
-- **Otomatik yol (önerilen):** Supabase paneli → **Project Settings → Integrations → GitHub** ile depoyu bağlayın. `main` dalına yeni bir migration dosyası geldiğinde Supabase onu otomatik uygular. Bu özelliğin hangi planlarda sunulduğu değişebilir; panelde görünmüyorsa kolay yolu kullanın.
+> Bu dosya tabloları, güvenlik kurallarını (RLS) ve sunucu fonksiyonlarını tek seferde kurar. **İkinci kez çalıştırmayın**; "already exists" hatası verir. Sonraki güncellemeler yeni numaralı dosyalar olarak gelecek.
 
----
+### 2.5 İlk yönetici hesabı
+1. Vercel'de yayına aldığınız sitede kendi e-posta adresinizle **Öğrenci kaydı** yapın.
+2. Supabase → **SQL Editor** → depodaki **`supabase/ilk-yonetici.sql`** içeriğini yapıştırın, içindeki e-posta adresini kendi adresinizle değiştirin → **Run**.
+3. Siteden çıkış yapıp yeniden girin: **Yönetici paneli** açılır.
+
+### 2.6 Resmî müfredatı yükleme
+Yönetici paneli → **Müfredat** → **Resmî müfredatı yükle** → dersler seçili gelir → **İçe aktar**. 7.369 öğrenme çıktısının aktarılması yaklaşık bir dakika sürer.
 
 ## 3. Claude API anahtarı (yapay zeka)
 
@@ -91,6 +98,7 @@ Bu anahtar `ANTHROPIC_API_KEY` adıyla **yalnızca Vercel'e** girilecek.
 | `ANTHROPIC_API_KEY` | Claude API anahtarı |
 | `AI_MODEL` | `claude-opus-5-5` |
 | `AI_DAILY_LIMIT` | `100` (öğretmen başına günlük soru üretim sınırı) |
+| `AI_EFFORT` | `high` (isteğe bağlı; `medium` daha hızlı ve ucuz, `high` daha özenli) |
 
 Değişken ekledikten ya da değiştirdikten sonra **Deployments → son yayın → ⋯ → Redeploy** yapın. Değişkenler yeni yayınla birlikte etkinleşir.
 
@@ -113,7 +121,9 @@ cp .env.example .env.local     # içine kendi anahtarlarınızı yazın
 npm run dev                    # http://localhost:5173
 ```
 
-`/api` fonksiyonlarını da yerelde denemek için: `npm i -g vercel` → `vercel link` → `vercel dev`.
+`npm run dev` yapay zeka fonksiyonunu (`/api/generate-questions`) çalıştırmaz; onu da yerelde denemek için: `npm i -g vercel` → `vercel link` → `vercel dev`.
+
+Testler: `npm test` (birim testleri), `npm run test:db` (yerel PostgreSQL ile veritabanı kuralları).
 
 ---
 
@@ -126,7 +136,10 @@ npm run dev                    # http://localhost:5173
 - [ ] Vercel projesi GitHub deposuna bağlandı
 - [ ] Altı ortam değişkeni Vercel'e girildi
 - [ ] (Adım 2'den sonra) İlk yayın başarılı, Supabase Site URL güncellendi
-- [ ] (Adım 3'ten sonra) Migration dosyaları Supabase'e uygulandı
+- [ ] `20261004000001_init.sql` Supabase SQL Editor'de çalıştırıldı
+- [ ] İlk yönetici hesabı atandı (`supabase/ilk-yonetici.sql`)
+- [ ] Resmî müfredat yönetici panelinden yüklendi
+- [ ] Bir öğretmen hesabı açılıp onaylandı ve AI ile deneme sorusu üretildi
 
 ## Güvenlik özeti
 

@@ -4,7 +4,7 @@ export const config = {
 };
 
 /**
- * Adım 2: Uygulama tamamen tarayıcıda, örnek verilerle (Demo Modu) çalışır.
- * Adım 3'te Supabase arka ucu bağlandığında, ortam değişkenleri doluysa gerçek veritabanı kullanılacak.
+ * Supabase adresi ve anahtarı tanımlıysa gerçek veritabanı kullanılır.
+ * Tanımlı değilse uygulama tarayıcıda örnek verilerle (Demo Modu) çalışır.
  */
-export const isDemo = true;
+export const isDemo = !(config.supabaseUrl && config.supabaseAnonKey);

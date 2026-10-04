@@ -38,6 +38,12 @@ export const profiles = {
   async get(id) {
     return clone(state.profiles.find((p) => p.id === id) ?? null);
   },
+  async update(id, changes) {
+    const p = state.profiles.find((x) => x.id === id);
+    Object.assign(p, Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)));
+    persist();
+    return clone(p);
+  },
 };
 
 // ---------------- Yönetici: öğretmen başvuruları ----------------
@@ -53,6 +59,9 @@ export const admin = {
     return clone(state.teacherRequests.filter((r) => !status || r.status === status).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   },
   /** Onaylanırsa kullanıcının rolü 'teacher' olur. Supabase'de review_teacher_request() RPC'si. */
+  async myTeacherRequest() {
+    return clone(state.teacherRequests.find((r) => r.userId === requireUser()) ?? null);
+  },
   async reviewTeacherRequest(id, approve, reason = '') {
     const me = requireAdmin();
     const req = state.teacherRequests.find((r) => r.id === id);
@@ -85,7 +94,15 @@ export const curriculum = {
       : state.themes.filter((t) => !subjectId || t.subjectId === subjectId).map((t) => t.id);
     return clone(state.outcomes.filter((o) => themeIds.includes(o.themeId)));
   },
-  /** Müfredatın tamamı (dışa aktarma ve özet için). */
+  async summary() {
+    return state.subjects
+      .map((s) => {
+        const themeIds = new Set(state.themes.filter((t) => t.subjectId === s.id).map((t) => t.id));
+        return { subjectId: s.id, gradeId: s.gradeId, name: s.name, themeCount: themeIds.size, outcomeCount: state.outcomes.filter((o) => themeIds.has(o.themeId)).length };
+      })
+      .sort((a, b) => a.gradeId - b.gradeId || a.name.localeCompare(b.name, 'tr'));
+  },
+  /** Müfredatın tamamı (dışa aktarma için). */
   async snapshot() {
     return clone({ subjects: state.subjects, themes: state.themes, outcomes: state.outcomes });
   },
@@ -94,7 +111,7 @@ export const curriculum = {
    * böylece sorulara bağlı tema ve kazanımlar korunur.
    * Supabase'de bu işlem tek transaction içinde import_curriculum() RPC fonksiyonuyla yapılacak.
    */
-  async importBatch({ subjects = [], themes = [], outcomes = [] }) {
+  async importBatch({ subjects = [], themes = [], outcomes = [] }, onProgress) {
     requireAdmin();
     const backup = clone({ subjects: state.subjects, themes: state.themes, outcomes: state.outcomes });
     const upsert = (list, items, keyOf) => {
@@ -120,6 +137,7 @@ export const curriculum = {
       Object.assign(state, backup);
       throw new Error('Demo Modu tarayıcı depolama sınırı aşıldı. Daha az ders seçerek tekrar deneyin (Supabase bağlandığında bu sınır olmayacak).');
     }
+    onProgress?.(1);
     return summary;
   },
   /** Tüm müfredatı tek seferde (küçük veri) — etiket gösterimi için sözlükler. */
@@ -133,10 +151,45 @@ export const curriculum = {
 };
 
 // ---------------- Sınıflar ----------------
+const JOIN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const classes = {
   async listMine() {
     const me = requireUser();
     return clone(state.classes.filter((c) => c.teacherId === me));
+  },
+  async create({ name, subjectId, grade }) {
+    let joinCode;
+    do joinCode = Array.from({ length: 6 }, () => JOIN_ALPHABET[Math.floor(Math.random() * JOIN_ALPHABET.length)]).join('');
+    while (state.classes.some((c) => c.joinCode === joinCode));
+    const c = { id: uid('c'), teacherId: requireUser(), name, subjectId, grade, joinCode, studentIds: [], createdAt: now() };
+    state.classes.push(c);
+    persist();
+    return clone(c);
+  },
+  async remove(id) {
+    state.classes = state.classes.filter((c) => c.id !== id);
+    persist();
+  },
+  async students(classId) {
+    const c = state.classes.find((x) => x.id === classId);
+    return clone(state.profiles.filter((p) => c?.studentIds.includes(p.id)).map((p) => ({ id: p.id, fullName: p.fullName, grade: p.grade })));
+  },
+  async removeStudent(classId, studentId) {
+    const c = state.classes.find((x) => x.id === classId);
+    c.studentIds = c.studentIds.filter((id) => id !== studentId);
+    persist();
+  },
+  async join(code) {
+    const me = requireUser();
+    const c = state.classes.find((x) => x.joinCode === String(code).trim().toUpperCase());
+    if (!c) throw new Error('Bu sınıf kodu bulunamadı.');
+    if (!c.studentIds.includes(me)) c.studentIds.push(me);
+    persist();
+    return clone(c);
+  },
+  async listJoined() {
+    const me = requireUser();
+    return clone(state.classes.filter((c) => c.studentIds.includes(me)));
   },
 };
 
@@ -316,5 +369,13 @@ export const usages = {
     }
     for (const list of map.values()) list.sort((a, b) => b.examDate.localeCompare(a.examDate));
     return map;
+  },
+};
+
+// ---------------- Yapay zeka (Demo Modu'nda kapalı) ----------------
+export const ai = {
+  available: false,
+  async generate() {
+    throw new Error('Yapay zeka ile soru üretimi Demo Modu\'nda kullanılamaz. Supabase ve Claude API bağlandığında etkinleşir.');
   },
 };

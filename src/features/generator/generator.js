@@ -1,8 +1,10 @@
-// AI ile soru üretim sihirbazı. Form ve istek modeli hazır; /api/generate-questions bağlantısı Adım 3'te eklenecek.
-import { html, setHtml, $, $$ } from '../../lib/html.js';
+// AI ile soru üretim sihirbazı: istek → /api/generate-questions (Vercel) → Claude → taslak sorular → öğretmen onayı.
+import { html, setHtml, $, $$, onAction } from '../../lib/html.js';
 import { api } from '../../services/index.js';
-import { selectOptions } from '../../ui/components.js';
+import { selectOptions, questionBody, questionMeta } from '../../ui/components.js';
 import { toast } from '../../ui/toast.js';
+import { confirmDialog } from '../../ui/modal.js';
+import { openQuestionEditor } from '../bank/question-editor.js';
 import { BLOOM_LEVELS, DIFFICULTIES, QUESTION_TYPES, MAARIF_DIMENSIONS, SCHOOL_LEVELS, levelOfGrade } from '../../data/constants.js';
 
 const entries = (obj) => Object.entries(obj).map(([k, v]) => [k, v.label]);
@@ -27,7 +29,7 @@ export async function render(root) {
             <div><label class="label" for="g-theme">Tema / Ünite</label><select id="g-theme" class="input" name="themeId" disabled></select></div>
             <div><label class="label" for="g-outcome">Öğrenme çıktısı (kazanım)</label><select id="g-outcome" class="input" name="outcomeCode" disabled></select></div>
           </div>
-          <p class="muted text-xs">Demo verisinde yalnızca 4. sınıf Türkçe, 6. sınıf Matematik ve Fen Bilimleri örnekleri var. 1–12. sınıfların tam listesi içe aktarılacak.</p>
+          ${api.ai.available ? '' : html`<p class="muted text-xs">Demo verisinde yalnızca 4. sınıf Türkçe, 6. sınıf Matematik ve Fen Bilimleri var. 1–12. sınıfların tamamı Supabase bağlandığında yönetici tarafından yüklenir.</p>`}
 
           <h2 class="mt-2 font-bold">2. Soru özellikleri</h2>
           <div class="grid gap-3 sm:grid-cols-4">
@@ -67,11 +69,14 @@ export async function render(root) {
           <div class="card p-5">
             <h2 class="font-bold">İstek özeti</h2>
             <pre id="summary" class="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-50 p-3 text-xs whitespace-pre-wrap dark:bg-slate-800"></pre>
-            <button type="submit" class="btn-primary mt-4 w-full">✨ Soruları üret</button>
-            <p class="muted mt-2 text-xs">Yapay zeka bağlantısı (Claude API, Vercel sunucu fonksiyonu üzerinden) Adım 3'te etkinleşecek.</p>
+            <button type="submit" class="btn-primary mt-4 w-full" id="gen-btn">✨ Soruları üret</button>
+            <p class="muted mt-2 text-xs">${api.ai.available
+              ? 'Üretim soru sayısına göre 30 saniye ile 2 dakika sürebilir. Sorular taslak olarak kaydedilir; siz onaylamadan sınavda kullanılmaz.'
+              : 'Demo Modu: Yapay zeka bağlantısı Supabase ve Claude API anahtarı tanımlandığında etkinleşir.'}</p>
           </div>
         </aside>
-      </form>`,
+      </form>
+      <section id="results" class="mt-8"></section>`,
   );
 
   const form = $('#gen', root);
@@ -121,12 +126,86 @@ export async function render(root) {
     sel('difficulty').value = BLOOM_LEVELS[e.target.value].defaultDifficulty;
   });
   form.addEventListener('input', paintSummary);
-  form.addEventListener('submit', (e) => {
+  let generated = [];
+  let lookup = null;
+  const results = $('#results', root);
+
+  function paintResults(rejected = [], usage = null) {
+    setHtml(
+      results,
+      generated.length || rejected.length
+        ? html`<div class="flex flex-wrap items-end justify-between gap-2">
+            <h2 class="text-lg font-bold">Üretilen sorular (${generated.length})</h2>
+            ${generated.some((q) => q.status === 'draft') ? html`<button class="btn-secondary btn-sm" data-action="approve-all">Hepsini onayla</button>` : ''}
+          </div>
+          ${usage ? html`<p class="muted text-xs">Kullanılan: ${usage.inputTokens ?? '?'} girdi + ${usage.outputTokens ?? '?'} çıktı token</p>` : ''}
+          ${rejected.length ? html`<p class="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              ${rejected.length} soru otomatik denetimden geçemediği için kaydedilmedi (${[...new Set(rejected.flatMap((r) => r.errors))].join(' ')})</p>` : ''}
+          <div class="mt-3 grid gap-3">${generated.map((q) => html`<article class="card p-4">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              ${questionMeta(q, lookup)}
+              <div class="flex gap-1">
+                ${q.status === 'draft' ? html`<button class="btn-primary btn-sm" data-action="approve" data-id="${q.id}">Onayla</button>` : html`<span class="badge bg-emerald-100 text-emerald-800">✓ Havuzda aktif</span>`}
+                <button class="btn-ghost btn-sm" data-action="edit" data-id="${q.id}">Düzenle</button>
+                <button class="btn-ghost btn-sm text-rose-600" data-action="discard" data-id="${q.id}">Sil</button>
+              </div>
+            </div>
+            <div class="mt-3">${questionBody(q, { showAnswer: true })}</div>
+            ${q.solution ? html`<p class="mt-2 rounded-md bg-slate-50 p-2 text-xs dark:bg-slate-800"><strong>Çözüm:</strong> ${q.solution}</p>` : ''}
+            ${q.type === 'multiple_choice' ? html`<details class="mt-2 text-xs"><summary class="cursor-pointer text-slate-500">Çeldirici gerekçeleri</summary>
+              <ul class="mt-1 space-y-0.5">${q.body.options.filter((o) => o.rationale).map((o) => html`<li><strong>${o.key})</strong> ${o.rationale}</li>`)}</ul></details>` : ''}
+          </article>`)}</div>`
+        : '',
+    );
+  }
+
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const req = request();
     if (!req.subjectId || !req.themeId) return toast('Lütfen sınıf, ders ve tema seçin.', 'warning');
-    toast('İstek hazır. Yapay zeka bağlantısı Adım 3\'te eklenecek; şimdilik soruları Soru Havuzu\'ndan elle ekleyebilirsiniz.', 'info', 6000);
+    if (!api.ai.available) return toast('Yapay zeka ile üretim Demo Modu\'nda kullanılamaz; soruları Soru Havuzu\'ndan elle ekleyebilirsiniz.', 'info', 6000);
+    const btn = $('#gen-btn', root);
+    btn.disabled = true;
+    btn.textContent = '⏳ Sorular üretiliyor…';
+    setHtml(results, html`<div class="card flex items-center gap-3 p-6"><span class="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent"></span>
+      <span>Yapay zeka ${req.count} soru yazıyor ve kendi çözümlerini denetliyor. Bu işlem 2 dakikaya kadar sürebilir…</span></div>`);
+    try {
+      lookup ??= await api.curriculum.lookup();
+      const out = await api.ai.generate(req);
+      generated = [...out.questions, ...generated];
+      paintResults(out.rejected, out.usage);
+      toast(`${out.questions.length} soru taslak olarak havuza eklendi.`, 'success');
+    } catch (err) {
+      setHtml(results, html`<div class="card border-rose-200 p-5 text-sm text-rose-700 dark:text-rose-300">❌ ${err.message}</div>`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ Soruları üret';
+    }
+  });
+
+  const replace = (q) => (generated = generated.map((x) => (x.id === q.id ? q : x)));
+  const off = onAction(root, {
+    approve: async (el) => {
+      replace(await api.questions.setStatus(el.dataset.id, 'active'));
+      paintResults();
+    },
+    'approve-all': async () => {
+      for (const q of generated.filter((x) => x.status === 'draft')) replace(await api.questions.setStatus(q.id, 'active'));
+      toast('Tüm sorular onaylandı.', 'success');
+      paintResults();
+    },
+    edit: async (el) => {
+      const saved = await openQuestionEditor(generated.find((q) => q.id === el.dataset.id));
+      if (saved) replace(saved), paintResults();
+    },
+    discard: async (el) => {
+      if (!(await confirmDialog({ title: 'Soruyu sil', message: 'Bu taslak soru havuzdan silinecek.', confirmLabel: 'Sil', tone: 'danger' }))) return;
+      await api.questions.remove(el.dataset.id);
+      generated = generated.filter((q) => q.id !== el.dataset.id);
+      paintResults();
+    },
   });
   $$('select', form).forEach((s) => s.disabled && setHtml(s, selectOptions([], '', '—')));
   paintSummary();
+  return off;
 }

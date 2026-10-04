@@ -18,6 +18,7 @@ const NAV = {
   admin: [
     { href: '#/yonetici', label: 'Öğretmen Başvuruları', icon: '✅' },
     { href: '#/yonetici/mufredat', label: 'Müfredat', icon: '📚' },
+    { href: '#/ogretmen', label: 'Öğretmen paneli', icon: '👩‍🏫' },
   ],
   student: [
     { href: '#/ogrenci', label: 'Panom', icon: '🏠' },
@@ -41,7 +42,7 @@ export function renderShell(root, user) {
     html`
       ${isDemo
         ? html`<div class="no-print bg-amber-100 px-4 py-1.5 text-center text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-            Demo Modu — veriler yalnızca bu tarayıcıda saklanır. Supabase bağlantısı Adım 3'te eklenecek.
+            Demo Modu — veriler yalnızca bu tarayıcıda saklanır. Gerçek veritabanı için Supabase ortam değişkenlerini tanımlayın.
           </div>`
         : ''}
       <div class="flex min-h-screen">
@@ -76,8 +77,8 @@ export function renderShell(root, user) {
   };
   root.querySelector('[data-menu]').addEventListener('click', () => toggle(true));
   backdrop.addEventListener('click', () => toggle(false));
-  root.querySelector('[data-logout]').addEventListener('click', () => {
-    signOut();
+  root.querySelector('[data-logout]').addEventListener('click', async () => {
+    await signOut();
     navigate('#/giris');
   });
   return root.querySelector('#page');

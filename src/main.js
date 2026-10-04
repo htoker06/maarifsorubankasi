@@ -1,19 +1,21 @@
 import './styles/main.css';
 import { route, startRouter } from './core/router.js';
-import { getUser, homeFor, restoreSession } from './core/session.js';
+import { getUser, homeFor, restoreSession, onSessionChange } from './core/session.js';
 import { renderLogin } from './features/auth/login.js';
 import { renderShell } from './features/layout/shell.js';
 import { html, setHtml } from './lib/html.js';
 
 const app = document.getElementById('app');
 
-const teacherOnly = () => (!getUser() ? '#/giris' : getUser().role !== 'teacher' ? homeFor(getUser()) : null);
+const teacherOnly = () => (!getUser() ? '#/giris' : !['teacher', 'admin'].includes(getUser().role) ? homeFor(getUser()) : null);
 const adminOnly = () => (!getUser() ? '#/giris' : getUser().role !== 'admin' ? homeFor(getUser()) : null);
 const studentOnly = () => (!getUser() ? '#/giris' : getUser().role !== 'student' ? homeFor(getUser()) : null);
 
 // Sayfa modülleri ihtiyaç anında yüklenir (ilk açılış hızlı olur).
 route('/giris', { public: true, guard: () => (getUser() ? homeFor(getUser()) : null), page: async () => ({ render: renderLogin }) });
-route('/', { guard: () => (getUser() ? homeFor(getUser()) : '#/giris') });
+route('/', { guard: () => homeFor(getUser()) });
+route('/basvuru', { public: true, guard: () => (getUser()?.role !== 'pending_teacher' ? homeFor(getUser()) : null), page: () => import('./features/auth/pending.js'), withUser: true });
+route('/sifre-yenile', { public: true, guard: () => (!getUser() ? '#/giris' : null), page: () => import('./features/auth/reset-password.js') });
 
 route('/ogretmen', { guard: teacherOnly, page: () => import('./features/teacher/dashboard.js') });
 route('/ogretmen/havuz', { guard: teacherOnly, page: () => import('./features/bank/bank.js') });
@@ -34,7 +36,7 @@ route('/ogrenci/karne', { guard: studentOnly, page: () => import('./features/com
 async function renderPage(r, ctx) {
   try {
     const mod = await r.page();
-    if (r.public) return mod.render(app, ctx);
+    if (r.public) return await mod.render(app, { ...ctx, user: getUser() });
     const pageEl = renderShell(app, getUser());
     return await mod.render(pageEl, { ...ctx, user: getUser(), meta: r.meta });
   } catch (err) {
@@ -45,4 +47,8 @@ async function renderPage(r, ctx) {
 }
 
 await restoreSession();
-startRouter({ renderPage, fallback: () => (getUser() ? homeFor(getUser()) : '#/giris') });
+startRouter({ renderPage, fallback: () => homeFor(getUser()) });
+// Oturum başka bir sekmede kapanırsa ya da süresi dolarsa giriş ekranına dön
+onSessionChange((user) => {
+  if (!user && !location.hash.startsWith('#/giris')) location.hash = '#/giris';
+});

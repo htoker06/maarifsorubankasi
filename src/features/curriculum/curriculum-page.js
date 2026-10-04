@@ -6,6 +6,7 @@ import { confirmDialog } from '../../ui/modal.js';
 import { CSV_COLUMNS, buildTemplateCsv, curriculumToCsv, parseCurriculumCsv } from './csv-import.js';
 import { downloadBlob } from '../export/print-model.js';
 import { SCHOOL_LEVELS, levelOfGrade } from '../../data/constants.js';
+import { isDemo } from '../../lib/config.js';
 
 const MAX_LISTED_ISSUES = 50;
 
@@ -25,16 +26,12 @@ export async function render(root) {
   };
 
   async function paint() {
-    const snap = await api.curriculum.snapshot();
-    const themeCount = (subjectId) => snap.themes.filter((t) => t.subjectId === subjectId).length;
-    const outcomeCount = (subjectId) => {
-      const ids = new Set(snap.themes.filter((t) => t.subjectId === subjectId).map((t) => t.id));
-      return snap.outcomes.filter((o) => ids.has(o.themeId)).length;
-    };
+    const summary = await api.curriculum.summary();
+    const totalOutcomes = summary.reduce((a, s) => a + s.outcomeCount, 0);
     const byLevel = Object.entries(SCHOOL_LEVELS).map(([key, level]) => ({
       key,
       label: level.label,
-      subjects: snap.subjects.filter((s) => levelOfGrade(s.gradeId) === key).sort((a, b) => a.gradeId - b.gradeId || a.name.localeCompare(b.name, 'tr')),
+      subjects: summary.filter((s) => levelOfGrade(s.gradeId) === key),
     }));
 
     setHtml(
@@ -51,9 +48,17 @@ export async function render(root) {
           </div>
         </div>
 
+        <section class="card mt-6 flex flex-wrap items-center justify-between gap-4 border-indigo-200 bg-indigo-50/60 p-5 dark:border-indigo-900 dark:bg-indigo-950/40">
+          <div class="max-w-2xl">
+            <h2 class="font-bold">📚 Resmî MEB müfredatı (1–12. sınıf)</h2>
+            <p class="muted mt-1 text-sm">Türkiye Yüzyılı Maarif Modeli öğretim programlarından alınmış 153 ders, 808 tema ve 7.369 öğrenme çıktısı; ünitelerin beceri, değer ve içerik çerçevesi bilgileriyle birlikte (yapay zekanın soru üretirken kullandığı bağlam). Aktarmadan önce dersleri seçebilirsiniz.</p>
+          </div>
+          <button class="btn-primary" data-action="official">Resmî müfredatı yükle</button>
+        </section>
+
         <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div class="card p-5">
-            <h2 class="font-bold">1. CSV dosyasını yükleyin</h2>
+            <h2 class="font-bold">Ya da kendi CSV dosyanızı yükleyin</h2>
             <label id="drop" class="mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-6 py-10 text-center transition hover:border-indigo-400 hover:bg-indigo-50/40 dark:border-slate-700 dark:hover:bg-indigo-950/30">
               <span class="text-3xl">📄</span>
               <span class="font-medium">Dosyayı buraya bırakın ya da seçmek için tıklayın</span>
@@ -80,13 +85,13 @@ export async function render(root) {
         </section>
 
         <section class="mt-8">
-          <h2 class="font-bold">Mevcut müfredat</h2>
+          <h2 class="font-bold">Mevcut müfredat <span class="muted font-normal">— ${summary.length} ders, ${totalOutcomes.toLocaleString('tr-TR')} öğrenme çıktısı</span></h2>
           <div class="mt-3 grid gap-4 md:grid-cols-3">
             ${byLevel.map((lvl) => html`<div class="card p-4">
               <p class="font-semibold">${lvl.label}</p>
               ${lvl.subjects.length
                 ? html`<ul class="mt-2 space-y-1 text-sm">${lvl.subjects.map((s) => html`<li class="flex justify-between gap-2">
-                    <span>${s.gradeId}. sınıf ${s.name}</span><span class="muted text-xs">${themeCount(s.id)} tema · ${outcomeCount(s.id)} kazanım</span></li>`)}</ul>`
+                    <span>${s.gradeId}. sınıf ${s.name}</span><span class="muted shrink-0 text-xs">${s.themeCount} tema · ${s.outcomeCount} kazanım</span></li>`)}</ul>`
                 : html`<p class="muted mt-2 text-sm">Henüz ders yok.</p>`}
             </div>`)}
           </div>
@@ -170,6 +175,22 @@ export async function render(root) {
     export: async () => downloadBlob(new Blob([curriculumToCsv(await api.curriculum.snapshot())], { type: 'text/csv;charset=utf-8' }), 'mufredat.csv'),
     'select-all': () => ((selectedSubjects = new Set(parsed.subjects.map((s) => s.id))), paintResult()),
     'select-none': () => ((selectedSubjects = new Set()), paintResult()),
+    official: async () => {
+      toast('Resmî müfredat dosyası indiriliyor…', 'info', 2500);
+      try {
+        const res = await fetch('/data/meb-mufredat.json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const bundle = await res.json();
+        parsed = { ...bundle, errors: [], warnings: [], rowCount: bundle.outcomes.length };
+        fileLabel = `MEB resmî müfredatı (${bundle.fetchedAt})`;
+        selectedSubjects = new Set(isDemo ? [] : bundle.subjects.map((s) => s.id));
+        paintResult();
+        if (isDemo) toast('Demo Modu\'nda tarayıcı depolama alanı sınırlı: aktarmak istediğiniz birkaç dersi seçin.', 'info', 7000);
+        $('#result', root).scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        toast(`Resmî müfredat dosyası alınamadı: ${err.message}`, 'error');
+      }
+    },
     import: async () => {
       const sel = selection();
       const ok = await confirmDialog({
@@ -179,9 +200,12 @@ export async function render(root) {
       });
       if (!ok) return;
       let s;
+      const btn = $('[data-action="import"]', root);
+      btn.disabled = true;
       try {
-        s = await api.curriculum.importBatch(sel);
+        s = await api.curriculum.importBatch(sel, (p) => (btn.textContent = `Aktarılıyor… %${Math.round(p * 100)}`));
       } catch (err) {
+        btn.disabled = false;
         toast(err.message, 'error', 8000);
         return;
       }

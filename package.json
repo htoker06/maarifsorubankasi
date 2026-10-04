@@ -7,12 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "bash scripts/test-db.sh"
   },
   "engines": {
     "node": ">=20.19"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@supabase/supabase-js": "^2.117.2",
     "chart.js": "^4.5.1",
     "docx": "^9.8.1",

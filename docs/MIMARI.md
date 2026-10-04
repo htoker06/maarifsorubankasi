@@ -421,6 +421,14 @@ create table ai_jobs (
 
 ---
 
+### 5.10 Uygulamada yapılan sadeleştirmeler (Adım 3)
+
+Gerçek şema `supabase/migrations/20261004000001_init.sql` dosyasındadır. Taslaktan farklar:
+- **Sınav maddeleri** ayrı `exam_items` tablosu yerine `exams.sections` JSONB alanında tutulur (`[{id, title, items:[{questionId, points, snapshot?}]}]`). Sürükle-bırak sıralaması tek güncellemeyle kaydedilir. Kullanılmış soru kaydı yine ayrı ve ilişkisel `question_usages` tablosundadır.
+- **Sınıflar** `exams.class_ids uuid[]` alanıyla tutulur.
+- **Soru–kazanım bağı** `questions.theme_id` + `questions.outcome_codes text[]` ile kurulur. Kazanımın kimliği tema + kod olduğu için bu ikili birlikte okunur.
+- **Doğrulama:** Şema ve kurallar yerel PostgreSQL'de 43 davranış testiyle doğrulanır (`npm run test:db`).
+
 ## 6. Güvenlik: Satır Bazlı Güvenlik (RLS)
 
 Her tabloda RLS **açık** olacak. Kurallar şöyle özetlenir:
