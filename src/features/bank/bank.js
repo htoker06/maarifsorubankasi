@@ -120,9 +120,11 @@ export async function render(root) {
       toast('Soru onaylandı ve aktif hale geldi.', 'success');
       load();
     },
-    preview: (el) => {
+    preview: async (el) => {
       const q = find(el.dataset.id);
       const usage = usageMap.get(q.id) ?? [];
+      const themeOutcomes = q.themeId ? await api.curriculum.outcomes({ themeId: q.themeId }) : [];
+      const outcomeText = (code) => themeOutcomes.find((o) => o.code === code)?.text ?? '';
       openModal({
         title: 'Soru önizleme',
         size: 'lg',
@@ -133,7 +135,7 @@ export async function render(root) {
             ${q.body.options.filter((o) => o.rationale).map((o) => html`<li><strong>${o.key})</strong> ${o.rationale}</li>`)}</ul></div>` : ''}
           ${q.type === 'open_ended' && q.body?.rubric?.length ? html`<div class="mt-4"><p class="label">Dereceli puanlama</p><ul class="space-y-1 text-sm">
             ${q.body.rubric.map((r) => html`<li>${r.criterion} — <strong>${r.points} puan</strong></li>`)}</ul></div>` : ''}
-          <div class="mt-4 text-xs text-slate-500">Kazanım: ${q.outcomeCodes.map((c) => `${c} — ${lookup.outcomes[c]?.text ?? ''}`).join('; ') || '—'}</div>
+          <div class="mt-4 text-xs text-slate-500">Kazanım: ${q.outcomeCodes.map((c) => `${c} — ${outcomeText(c)}`).join('; ') || '—'}</div>
           ${usage.length ? html`<div class="mt-4"><p class="label">Kullanım geçmişi</p><ul class="space-y-1 text-sm">
             ${usage.map((u) => html`<li>📅 ${formatDate(u.examDate)} — ${u.examTitle}</li>`)}</ul></div>` : ''}`,
         actions: [{ label: 'Kapat', value: null }],

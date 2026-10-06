@@ -75,3 +75,9 @@ export const MAARIF_DIMENSIONS = {
 export const optionCountForGrade = (grade) => (Number(grade) <= 4 ? 3 : 4);
 
 export const OPTION_KEYS = ['A', 'B', 'C', 'D', 'E'];
+
+/**
+ * Öğrenme çıktısı kimliği. Resmî programlarda aynı kod birden fazla temada geçebilir
+ * (ör. Türkçe'de beceriler temalar boyunca tekrarlanır), bu yüzden benzersiz olan tema + kod ikilisidir.
+ */
+export const outcomeKey = (themeId, code) => `${themeId}|${code}`;
