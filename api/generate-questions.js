@@ -82,23 +82,30 @@ export default async function handler(req, res) {
 
   // 5) Claude çağrısı (yapılandırılmış JSON çıktı + güvenlik reddinde sunucu tarafı yedek model)
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 280_000, maxRetries: 1 });
+  const params = {
+    model: MODEL,
+    max_tokens: 32000,
+    output_config: { effort: EFFORT, format: { type: 'json_schema', schema: QUESTIONS_SCHEMA } },
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userPrompt }],
+  };
   let message;
   try {
-    message = await anthropic.beta.messages.create({
-      model: MODEL,
-      max_tokens: 32000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: EFFORT, format: { type: 'json_schema', schema: QUESTIONS_SCHEMA } },
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-    });
+    try {
+      // Güvenlik reddinde sunucu tarafında otomatik yedek modele geçiş (beta özelliği)
+      message = await anthropic.beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+    } catch (err) {
+      // Yedek model özelliği bu hesapta açık değilse istek onsuz tekrarlanır
+      if (!(err instanceof Anthropic.BadRequestError) || !/fallback|beta/i.test(apiErrorMessage(err))) throw err;
+      message = await anthropic.messages.create(params);
+    }
   } catch (err) {
     await failJob(admin, job?.id, err);
-    if (err instanceof Anthropic.RateLimitError) return json(res, 503, { error: 'Yapay zeka servisi şu an yoğun. Biraz sonra tekrar deneyin.' });
-    if (err instanceof Anthropic.AuthenticationError) return json(res, 500, { error: 'Claude API anahtarı geçersiz. Yöneticiye bildirin.' });
     if (err instanceof Anthropic.APIConnectionError) return json(res, 503, { error: 'Yapay zeka servisine bağlanılamadı. Tekrar deneyin.' });
-    if (err instanceof Anthropic.APIError) return json(res, 502, { error: `Yapay zeka servisi hata verdi (${err.status}).` });
+    if (err instanceof Anthropic.APIError) {
+      const { status, message: text } = describeApiError(err);
+      return json(res, status, { error: text });
+    }
     throw err;
   }
 
@@ -156,6 +163,31 @@ export default async function handler(req, res) {
   }).eq('id', job?.id);
 
   return json(res, 200, { questions: saved.map(questionFromRow), rejected, usage, model: message.model });
+}
+
+/** Claude API hata gövdesindeki açıklama (ör. "Your credit balance is too low ...") */
+export function apiErrorMessage(err) {
+  return String(err?.error?.error?.message ?? err?.error?.message ?? err?.message ?? '');
+}
+
+/** Claude API hatasını öğretmene gösterilecek, ne yapılacağını söyleyen Türkçe iletiye çevirir. */
+export function describeApiError(err) {
+  const detail = apiErrorMessage(err);
+  if (/credit balance|billing|purchase credits/i.test(detail)) {
+    return { status: 402, message: 'Claude API hesabında kredi yok. Yönetici console.anthropic.com → Billing bölümünden kredi yüklemeli.' };
+  }
+  if (err?.status === 401 || /api key|x-api-key|authentication/i.test(detail)) {
+    return { status: 500, message: 'Claude API anahtarı geçersiz. Vercel\'deki ANTHROPIC_API_KEY değerini kontrol edin.' };
+  }
+  if (err?.status === 403 || /permission/i.test(detail)) {
+    return { status: 500, message: `Claude API bu isteğe izin vermedi: ${detail}` };
+  }
+  if (err?.status === 404 || /model/i.test(detail) && /not found|does not exist|invalid/i.test(detail)) {
+    return { status: 500, message: `Model bulunamadı. Vercel'deki AI_MODEL değerini kontrol edin (önerilen: claude-opus-5-5). Ayrıntı: ${detail}` };
+  }
+  if (err?.status === 429) return { status: 503, message: 'Yapay zeka servisi şu an yoğun ya da kullanım sınırına ulaşıldı. Biraz sonra tekrar deneyin.' };
+  if (err?.status === 529 || err?.status >= 500) return { status: 503, message: 'Yapay zeka servisi geçici olarak yanıt vermiyor. Biraz sonra tekrar deneyin.' };
+  return { status: 502, message: `Yapay zeka servisi isteği reddetti (${err?.status ?? '?'}): ${detail || 'ayrıntı yok'}` };
 }
 
 async function failJob(admin, jobId, err, usage = {}) {
