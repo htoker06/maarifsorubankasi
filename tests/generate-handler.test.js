@@ -36,16 +36,27 @@ vi.mock('@supabase/supabase-js', () => ({
 // ---------------------------------------------------------------- sahte Claude
 const anthropicCalls = [];
 let nextResponse;
+let betaError = null; // beta çağrısında fırlatılacak hata
+let plainError = null; // beta olmayan çağrıda fırlatılacak hata
 vi.mock('@anthropic-ai/sdk', () => {
-  class APIError extends Error {}
-  class Anthropic {
-    constructor() {
-      this.beta = { messages: { create: async (params) => (anthropicCalls.push(params), nextResponse) } };
+  class APIError extends Error {
+    constructor(status, body) {
+      super(body?.error?.message ?? 'api error');
+      this.status = status;
+      this.error = body;
     }
   }
-  Object.assign(Anthropic, { APIError, RateLimitError: class extends APIError {}, AuthenticationError: class extends APIError {}, APIConnectionError: class extends APIError {} });
+  class BadRequestError extends APIError {}
+  class Anthropic {
+    constructor() {
+      this.beta = { messages: { create: async (params) => { anthropicCalls.push({ beta: true, ...params }); if (betaError) throw betaError; return nextResponse; } } };
+      this.messages = { create: async (params) => { anthropicCalls.push({ beta: false, ...params }); if (plainError) throw plainError; return nextResponse; } };
+    }
+  }
+  Object.assign(Anthropic, { APIError, BadRequestError, RateLimitError: class extends APIError {}, AuthenticationError: class extends APIError {}, APIConnectionError: class extends APIError {} });
   return { default: Anthropic };
 });
+const AnthropicMock = (await import('@anthropic-ai/sdk')).default;
 
 const { default: handler } = await import('../api/generate-questions.js');
 
@@ -67,6 +78,8 @@ beforeEach(() => {
   inserts.length = 0;
   updates.length = 0;
   anthropicCalls.length = 0;
+  betaError = null;
+  plainError = null;
   Object.assign(db, {
     profiles: [{ id: 'u1', role: 'teacher' }],
     subjects: [{ id: 'g6-fen-bilimleri', name: 'Fen Bilimleri', grade_id: 6 }],
@@ -126,6 +139,29 @@ describe('POST /api/generate-questions', () => {
     nextResponse = { ...nextResponse, stop_reason: 'max_tokens', content: [] };
     expect((await call(request)).statusCode).toBe(502);
     expect(updates.filter((u) => u.payload.status === 'failed')).toHaveLength(2);
+  });
+
+  it('yedek model özelliği reddedilirse isteği onsuz tekrarlar', async () => {
+    betaError = new AnthropicMock.BadRequestError(400, { error: { type: 'invalid_request_error', message: 'fallbacks: not available for this organization' } });
+    const res = await call(request);
+    expect(res.statusCode).toBe(200);
+    expect(anthropicCalls.map((c) => c.beta)).toEqual([true, false]);
+    expect(anthropicCalls[1].fallbacks).toBeUndefined();
+    expect(anthropicCalls[1].output_config.format.type).toBe('json_schema');
+  });
+
+  it('kredi bitmişse ne yapılacağını söyleyen ileti döner', async () => {
+    betaError = new AnthropicMock.BadRequestError(400, { error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } });
+    const res = await call(request);
+    expect(res.statusCode).toBe(402);
+    expect(res.body.error).toContain('Billing');
+    expect(anthropicCalls).toHaveLength(1); // kredi hatası tekrar denenmez
+  });
+
+  it('diğer 400 hatalarında Claude\'un açıklamasını gösterir', async () => {
+    betaError = new AnthropicMock.BadRequestError(400, { error: { type: 'invalid_request_error', message: 'max_tokens: too large' } });
+    const res = await call(request);
+    expect(res.body.error).toContain('max_tokens: too large');
   });
 
   it('eksik sunucu yapılandırmasını bildirir', async () => {
