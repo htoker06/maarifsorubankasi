@@ -187,6 +187,23 @@ window.addEventListener('keydown', (ev) => {
    ========================================================================= */
 const messagesEl = $('messages');
 
+/* ---------- ağ modu (Firebase varsa) ---------- */
+let netMode = false;
+const calcDot = $('calcDot');
+
+function updateDot(n) {
+  if (n > 0) { calcDot.classList.remove('hidden'); calcDot.classList.add('on'); }
+  else { calcDot.classList.add('hidden'); calcDot.classList.remove('on'); }
+}
+function setupNet() {
+  if (!window.HCNet || !window.HCNet.isConfigured()) return;
+  window.HCNet.init()
+    .then((ok) => { if (ok) { netMode = true; window.HCNet.watchUnread(updateDot); } })
+    .catch(() => { netMode = false; });
+}
+window.addEventListener('hcnet-ready', setupNet);
+if (window.HCNet) setupNet();
+
 async function openChat(code, cfg) {
   try {
     cryptoKey = await deriveKey(code, cfg.salt);
@@ -196,7 +213,24 @@ async function openChat(code, cfg) {
   }
   $('chatName').textContent = cfg.name || 'Kişi';
   showScreen('chat');
-  await renderMessages();
+
+  if (netMode) {
+    $('chatState').textContent = 'bağlanıyor…';
+    messagesEl.innerHTML = '';
+    try {
+      await window.HCNet.connectChat(
+        (m) => addBubble(m.text, m.from, m.ts),
+        (st) => { $('chatState').textContent = st; }
+      );
+      window.HCNet.markRead();
+      updateDot(0);
+    } catch (_) {
+      $('chatState').textContent = 'bağlantı hatası';
+    }
+  } else {
+    $('chatState').textContent = 'yerel mod';
+    await renderMessages();
+  }
   setTimeout(() => $('msgInput').focus(), 100);
 }
 
@@ -239,12 +273,27 @@ $('composer').addEventListener('submit', async (ev) => {
   const text = input.value.trim();
   if (!text || !cryptoKey) return;
   input.value = '';
+
+  if (netMode) {
+    // Ağ modu: Firestore dinleyicisi mesajı balon olarak kendisi ekler (yankı).
+    try {
+      await window.HCNet.send(text);
+    } catch (err) {
+      const note = err && err.message === 'NO_PEER'
+        ? 'Karşı taraf henüz bağlanmadı; bağlanınca iletilecek.'
+        : 'Gönderilemedi (çevrimdışı olabilir).';
+      $('chatState').textContent = note;
+      input.value = text; // kaybolmasın
+    }
+    return;
+  }
+
+  // Yerel mod: cihazda şifreli sakla
   const msg = { from: 'me', text, ts: Date.now() };
   addBubble(text, 'me', msg.ts);
   const raw = loadRawMsgs();
   raw.push(await encryptObj(msg));
   saveRawMsgs(raw);
-  // NOT: Gerçek gönderim (tek kişiye, uçtan uca) bir sonraki adımda eklenecek.
 });
 
 $('btnBack').addEventListener('click', lock);
@@ -311,6 +360,7 @@ function showScreen(name) {
 function lock() {
   // anahtarı ve çözülmüş mesajları bellekten temizle, hesap makinesine dön
   cryptoKey = null;
+  if (netMode && window.HCNet) { window.HCNet.markRead(); window.HCNet.disconnect(); updateDot(0); }
   messagesEl.innerHTML = '';
   $('msgInput').value = '';
   expr = '';

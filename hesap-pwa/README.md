@@ -22,11 +22,19 @@ Bu klasör, ana depodan (soru bankası) bağımsız, kendi başına çalışan s
 Yani hesap makinesine `1 + 3 + 5` yazıp `=` basınca sohbet açılır (9 sonucu yerine).
 Kodu ilk fırsatta Ayarlar'dan (sohbet açıkken ⚙) değiştirin.
 
+## 2. adım (eklendi)
+
+- ✅ **İki kişilik, uçtan uca şifreli gerçek gönderim** (Firebase/Firestore).
+  Sunucu yalnızca şifreli metni görür; ECDH özel anahtarı cihazda, dışa aktarılamaz
+  biçimde saklanır. Kurulum: **SETUP-FIREBASE.md**, güvenlik kuralları: **firestore.rules**.
+- ✅ **Uygulama içi sembolik uyarı:** okunmamış mesaj varsa hesap makinesi ekranında
+  turuncu **"M"** işareti yanar (görünür bildirim yok → bildirim geçmişinde iz yok).
+- Firebase doldurulmadıkça uygulama **yerel modda** çalışır (mesajlar cihazda kalır).
+
 ## Henüz yok (sonraki adımlar)
 
-- ⏳ Gerçek, iki kişilik, **uçtan uca şifreli** gönderim (Firebase/Firestore + Web Push)
-- ⏳ Mesaj gelince uygulama içi sembolik uyarı (ikonda rozet / köşede işaret), görünür bildirim olmadan
 - ⏳ Kendini silen mesajlar (opsiyonel)
+- ⏳ "Hızlı kaçış" hareketi, okundu bilgisi vb. ince ayarlar
 
 ## Yerelde deneme
 

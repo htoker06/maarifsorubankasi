@@ -1,10 +1,12 @@
 /* Basit önbellek — çevrimdışı açılış ve "uygulama gibi" davranış için */
-const CACHE = 'hesap-v1';
+const CACHE = 'hesap-v2';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './net.js',
+  './firebase-config.js',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -31,6 +33,6 @@ self.addEventListener('fetch', (e) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => (request.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
   );
 });
