@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#1c1c1e" />
+  <title>Hesap Makinesi</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- HESAP MAKİNESİ EKRANI -->
+  <main id="calc" class="screen">
+    <div class="calc-display">
+      <div id="calcHistory" class="calc-history"></div>
+      <div id="calcResult" class="calc-result">0</div>
+    </div>
+    <div class="calc-pad">
+      <button class="key fn" data-k="C">C</button>
+      <button class="key fn" data-k="()">( )</button>
+      <button class="key fn" data-k="%">%</button>
+      <button class="key op" data-k="/">÷</button>
+
+      <button class="key" data-k="7">7</button>
+      <button class="key" data-k="8">8</button>
+      <button class="key" data-k="9">9</button>
+      <button class="key op" data-k="*">×</button>
+
+      <button class="key" data-k="4">4</button>
+      <button class="key" data-k="5">5</button>
+      <button class="key" data-k="6">6</button>
+      <button class="key op" data-k="-">−</button>
+
+      <button class="key" data-k="1">1</button>
+      <button class="key" data-k="2">2</button>
+      <button class="key" data-k="3">3</button>
+      <button class="key op" data-k="+">+</button>
+
+      <button class="key" data-k="0">0</button>
+      <button class="key" data-k=".">.</button>
+      <button class="key back" data-k="DEL">⌫</button>
+      <button class="key eq" data-k="=">=</button>
+    </div>
+  </main>
+
+  <!-- SOHBET EKRANI (gizli) -->
+  <section id="chat" class="screen hidden" aria-hidden="true">
+    <header class="chat-top">
+      <button id="btnBack" class="chat-back" title="Kapat">✕</button>
+      <div class="chat-title">
+        <span id="chatName">Kişi</span>
+        <small id="chatState">yerel mod</small>
+      </div>
+      <button id="btnSettings" class="chat-gear" title="Ayarlar">⚙</button>
+    </header>
+
+    <div id="messages" class="messages"></div>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <input id="msgInput" class="msg-input" type="text" placeholder="Mesaj yaz…" />
+      <button id="btnSend" class="msg-send" type="submit">➤</button>
+    </form>
+  </section>
+
+  <!-- AYARLAR -->
+  <section id="settings" class="screen hidden" aria-hidden="true">
+    <header class="chat-top">
+      <button id="btnSettingsBack" class="chat-back" title="Geri">←</button>
+      <div class="chat-title"><span>Ayarlar</span></div>
+      <span class="chat-gear" style="visibility:hidden">⚙</span>
+    </header>
+    <div class="settings-body">
+      <label class="field">
+        <span>Gizli açılış kodu</span>
+        <small>Hesap makinesine bu ifadeyi yazıp <b>=</b> tuşuna basınca sohbet açılır. Örn: <code>1+3+5</code></small>
+        <input id="setCode" class="txt" type="text" placeholder="örn: 1+3+5" />
+      </label>
+      <label class="field">
+        <span>Kişi adı</span>
+        <input id="setName" class="txt" type="text" placeholder="örn: Kişi" />
+      </label>
+      <button id="btnSaveSettings" class="btn-primary">Kaydet</button>
+      <button id="btnWipe" class="btn-danger">Tüm mesajları sil</button>
+      <p class="hint">Mesajlar yalnızca bu cihazda, açılış kodundan türetilen bir anahtarla şifreli saklanır. Bu ekran yalnızca sohbet açıkken erişilebilir.</p>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
